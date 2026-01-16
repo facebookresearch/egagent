@@ -1,0 +1,154 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# Licensed under the Creative Commons Attribution-NonCommercial 4.0 International (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://creativecommons.org/licenses/by-nc/4.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+import json 
+from baselines.baselines import *
+
+## Load and clean up formatting of EgoLifeQA
+egolife_qa_jake = load_egolife_qa_jake()
+
+## Oracle and Previous X days of Transcripts Eval (see Appendix D.2)
+
+mllm = 'gpt-4.1' # gpt-4.1, gemini-2.5-pro
+captioner = 'gpt-4.1_summarized' # 'gpt-4.1_summarized', 'llava-video-7b_summarized', 'llava-video-7b', 'gpt-4.1'
+use_visual_oracle = False
+use_captions = False and (not use_visual_oracle)
+use_dt = True and (not use_captions)
+use_dt_oracle = True and use_dt # tells us which day to look at diarized transcript (DT)
+num_prev_days = (not use_dt_oracle) * (use_dt) * 4 # 3, 4
+remove_diarization = False and use_dt
+
+mcq_language = 'english' # 'chinese', 'english'
+subs_language = 'english' # 'chinese', 'english', 'chinese+english'
+max_frames= 50 # how many frames can MLLM ingest? e.g. GPT 4.1 and Gemini 2.5 Pro with APE / Azure is 50 max
+use_entity_graph = False
+print()
+
+if use_captions:
+    print(f'Evaluating {mllm} with 1FPS captions before query time.')
+    results_root = f'egolife_results/captions/mcq_{mcq_language}'
+    results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+    
+elif not use_visual_oracle:
+    print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
+    results_root = f'egolife_results/diarized_transcripts/DT_oracle/mcq_{mcq_language}' if use_dt_oracle else f'egolife_results/diarized_transcripts/prevDTdays-{num_prev_days}/mcq_{mcq_language}'
+    results_json = f'{results_root}/{mllm}_DTlang-{subs_language}_removediarization-{remove_diarization}_egolife_results.json'
+    
+else:
+    print(f'Evaluating visual oracle with {max_frames} frames.')
+    if use_dt:
+        print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Evaluating using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
+    results_root = f'egolife_results/use{max_frames}frames_oracle'
+    results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+
+print(results_json)
+if os.path.exists(results_json):
+    with open(results_json, 'r') as f:
+        final_prediction_list = json.load(f)
+else:
+    final_prediction_list = []
+
+correct_count = 0
+results_list = []
+
+for entry in final_prediction_list:
+    qid = entry['ID']
+    question_data = [e for e in egolife_qa_jake if e['ID'] == qid][0]
+
+    mcq_pred = extract_mcq_prediction(entry['content'].strip("```json").strip("response :\n"))
+    is_correct =  mcq_pred == question_data['answer']
+    correct_count += is_correct
+
+    question_data[f'{mllm}_acc'] = is_correct
+
+avg_total_tokens = np.average([e['usage_metadata']['total_tokens'] for e in final_prediction_list])
+print(f'Avg Total #Tokens Used: {avg_total_tokens // 1000 :.0f}K')
+print(f'Correct MCQ = {correct_count} / {len(final_prediction_list)} = {correct_count / len(final_prediction_list) * 100: .2f}%')
+print()
+
+
+## Gemini 2.5 Pro Uniform Sampling (3000 frames + transcripts) eval
+
+print(f'Evaluating Gemini 2.5 Pro Uniform Sampling (3000 f + t)')
+mllm_baseline = f'egolife_results/gemini-2.5-pro-uniform-sample-frames+dt-3000.json'
+with open(mllm_baseline, 'r') as file:
+    results_mllm_baseline = json.load(file)
+
+correct = 0
+total = 0
+# with Gemini 2.5 Pro, some question IDs have mismatched formats of LLM output, which we handle below
+misformatted_qids = [9,36,42,62,70,75,81,95,104,115,144,267,282,324,325,359,363,387,395,404,410,421,432,436]
+total_token_count = []
+
+results_gemini25_uniformsample = []
+
+for i in range(len(results_mllm_baseline)):
+    results = {}
+    qid = int(results_mllm_baseline[i]['key'].split("-")[-1])
+    answer = egolife_qa_jake[qid-1]['answer']
+    try:
+        entry = [e for e in results_mllm_baseline if int(e['key'].split("-")[-1]) == (qid)][0]
+        if qid in [e+1 for e in misformatted_qids]:
+            mcq_pred = json.loads(entry['response']['candidates'][0]['content']['parts'][0]['text'][7:-3])['response'][0]['mcq_prediction']
+            just = json.loads(entry['response']['candidates'][0]['content']['parts'][0]['text'][7:-3])['response'][0]['justification']
+        else:
+            mcq_pred = json.loads(entry['response']['candidates'][0]['content']['parts'][0]['text'][7:-3])[0]['mcq_prediction']
+            just = json.loads(entry['response']['candidates'][0]['content']['parts'][0]['text'][7:-3])[0]['justification']
+
+        results['ID'] = egolife_qa_jake[qid-1]['ID']
+        results['answer'] = answer
+        results['mcq_prediction'] = mcq_pred
+        results['total_token_count'] = entry['response']['usageMetadata']['totalTokenCount']
+        results['just'] = just
+        results_gemini25_uniformsample.append(results)
+        correct += mcq_pred == answer
+        total += 1
+        total_token_count.append(entry['response']['usageMetadata']['totalTokenCount'])
+    except Exception as e:
+        continue
+
+print(f'Acc = {(correct)} / {len(results_mllm_baseline)} = {(correct) / len(results_mllm_baseline) * 100: .2f}%')
+
+
+## EGAgent Eval
+
+print(f'Evaluating EGAgent')
+def count_tokens(results):
+    tokens = [e['total_tokens'] for e in results if 'total_tokens' in e.keys()]
+    return tokens
+
+def print_acc(dataset, agent_backbone, config, results):
+    correct = [e for e in results if e['answer'] == e['mcq_prediction']]
+    print(f'{dataset}: {agent_backbone} with {config}, Acc = {len(correct)} / {len(results)} = {len(correct) / len(results) * 100: .2f}%')
+
+def get_eg_f_t_agent_results(agent_backbone = 'gpt-4.1'):
+    results_json = f'egolife_results/agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+entitygraph-dtonly-and-dtcaptionfuse+dt-llmsearch_results.json' 
+    with open(results_json, 'r') as file:
+        agent_results = json.load(file)
+    return agent_results
+
+dataset = 'egolife'
+agent_backbone = 'gpt-4.1'
+results_json = f'egolife_results/agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+dt-llmsearch_results.json'
+with open(results_json, 'r') as file:
+    agent_gpt41_ft = json.load(file)
+print_acc(dataset, 'gpt-4.1', "F + T", agent_gpt41_ft)
+
+agent_gpt41_egft = get_eg_f_t_agent_results('gpt-4.1')
+agent_gpt4o_egft = get_eg_f_t_agent_results('gpt-4o')
+agent_gemini25_egft = get_eg_f_t_agent_results('gemini-2.5-pro')
+print_acc(dataset, 'gpt-4.1', 'EG + F + T', agent_gpt41_egft)
+print_acc(dataset, 'gpt-4o', 'EG + F + T', agent_gpt4o_egft)
+print_acc(dataset, 'gemini-2.5-pro', 'EG + F + T', agent_gemini25_egft)
