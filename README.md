@@ -32,7 +32,7 @@ If you find this project useful in your research, please consider citing:
 @misc{rege2025agentic,
   title     = {Agentic Very Long Video Understanding},
   author    = {Rege, Aniket and Sadhu, Arka and Li, Yuliang and Li, Kejie and Vinayak, Ramya Korlakai and Chai, Yuning and Lee, Yong Jae and Kim, Hyo Jin},
-  month     = {December},
-  year      = {2025},
+  month     = {January},
+  year      = {2026},
 }
 ```
