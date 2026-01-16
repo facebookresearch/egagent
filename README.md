@@ -23,8 +23,8 @@ We create data sources for the visual search tool and entity graph in `prepare_d
 ## EGAgent Inference
 We provide code for EGAgent inference on EgoLife and Video-MME in `egagent/`.
 
-## EGAgent Inference
-We provide code to evaluate simple baselines on very long video understanding, i.e. multimodal LLMs that uniformly sample frames and transcripts in `baselines/`.
+## Baseline Inference
+We provide code to evaluate other baselines on very long video understanding, i.e. multimodal LLMs that uniformly sample frames and transcripts in `baselines/`.
 
 ## Citation
 If you find this project useful in your research, please consider citing:
