@@ -27,7 +27,7 @@ def run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcri
         "day_search_dict": day_search_dict,
         "question": vqa_question, 
         "candidates": options, 
-        "audio_transcripts": xtranscripts,
+        "audio_transcripts": transcripts,
         "total_tokens": [],
         "vidstart": vidstart, # needed by retrieve_frames_sql on videomme
         "vidend": vidend, # needed by retrieve_frames_sql on videomme
@@ -85,27 +85,25 @@ def videomme_inference():
     app = workflow.compile()
 
 
-    # Inference over Video-MME (long) batch
+    # Inference over full Video-MME (long) dataset
     df_videomme = json.loads(pd.read_parquet("lmms-lab/Video-MME/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
     df_videomme_long = [e for e in df_videomme if e['duration'] == 'long']
     
-    batch_offset = 180 # 5 batches = 900 = 300 videos * 3 MCQ
-    start_idx = int(sys.argv[1])
-    end_idx = start_idx + batch_offset
-    results_json = f'egagent_videomme-long_results_{batch_offset}.json'
+    total_questions = len(df_videomme_long)
+    results_json = 'egagent_videomme-long_results_all.json'
     print(f'Generating ', results_json)
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:
             final_prediction_list = json.load(f)
     else:
         final_prediction_list = []
-    print(f'Done with {len(final_prediction_list)} / {batch_offset}')
-    for i in tqdm(range(start_idx, end_idx), desc="Processing"):
+    print(f'Done with {len(final_prediction_list)} / {total_questions}')
+    completed_ids = {e['ID'] for e in final_prediction_list}
+    for question_data in tqdm(df_videomme_long, desc="Processing"):
         results = {}
-        question_data = df_videomme_long[i]
         selected_qid = question_data['question_id']
 
-        if selected_qid in [e['ID'] for e in final_prediction_list]:
+        if selected_qid in completed_ids:
             print(f'Skipping {selected_qid}, already done')
             continue
             
@@ -135,6 +133,7 @@ def videomme_inference():
             results['justification'] = value["answer"].justification
             results['total_tokens'] = value["total_tokens"]
             final_prediction_list.append(results)
+            completed_ids.add(selected_qid)
             with open(results_json, 'w') as f:
                 json.dump(final_prediction_list, f, indent=4)
         except Exception as e:

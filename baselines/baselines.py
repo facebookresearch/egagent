@@ -25,8 +25,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import *
 
 client = genai.Client(api_key = GOOGLE_GENAI_API_KEY)
-EGOLIFE_ROOT = '/source/data/aniketr/EgoLife' # path to EgoLife dataset (HF)
-egolife_caption_root = '' # path to EgoLife captions
+egolife_caption_root = 'path/to/egolife/captions' # path to EgoLife captions
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Configure agent and data settings")
@@ -48,7 +47,7 @@ def parse_args():
     parser.add_argument(
         "--use_captions",
         action="store_true",
-        help="Use visual frame oracle (default: False)"
+        help="Use caption-only baseline (default: False)"
     )
 
     parser.add_argument(
@@ -74,7 +73,7 @@ def parse_args():
     parser.add_argument(
         "--num_prev_days",
         type=int,
-        default=4,
+        default=3,
         help="Number of previous days of diarized transcript to include (default: 3)"
     )
 
@@ -87,9 +86,10 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-## given a timelist, return frames (e.g. 50 total) centered around each of these moments.
 def get_closest_images(entry_list, base_dir=".", total_files=50):
     """
+    Sample frame paths centered around target timestamps.
+
     entry_list: [{'date': 'DAY1', 'time_list': ['11360904']}, ...]
     base_dir: root directory containing DAY1/, DAY2/, etc.
     total_files: how many filepaths to extract in total (default 50).
@@ -144,6 +144,7 @@ def get_closest_images(entry_list, base_dir=".", total_files=50):
     return final_paths
     
 def get_entity_graph_for_day(day='DAY1'):
+    """Load all entity graph entries for a given day."""
     day = day.lower()
     all_entries = []
 
@@ -156,6 +157,8 @@ def get_entity_graph_for_day(day='DAY1'):
 
     
 def load_egolife_captions_for_day(day, query_day, query_time, captioner = 'gpt-4.1'):
+    """Load captions for a day, truncated at the query time for the query day."""
+
     if captioner in ['gpt-4.1_summarized', 'llava-video-7b_summarized']:
         captions_file = f'{egolife_caption_root}/summarized_captions/day{day}_captioner-{captioner}-gpt-4.1_5min-intervals.json'
     else:
@@ -187,11 +190,13 @@ def load_egolife_captions_for_day(day, query_day, query_time, captioner = 'gpt-4
     
     return captions_for_llm
 
-def get_text_prompt_subs_and_frames(question, options, subtitles):
-    return f"""This video's relevant subtitles are listed below, along with time stamps:
-    {subtitles}
-    Select the best answer to the following multiple-choice question based only on the subtitles and provided 50 image frames and provide a justification for your answer.
-    In your justification, reference specific subtitles or image frames that lead to your prediction.
+def get_text_prompt_dt_and_frames(question, options, transcripts):
+    """Build a prompt using audio transcripts + sampled frames."""
+
+    return f"""This video's relevant audio transcripts are listed below, along with time stamps:
+    {transcripts}
+    Select the best answer to the following multiple-choice question based only on the audio transcripts and provided 50 image frames and provide a justification for your answer.
+    In your justification, reference specific audio transcripts or image frames that lead to your prediction.
     Question: {question}
     Options: {options}
     Format your response in json: 
@@ -205,11 +210,13 @@ def get_text_prompt_subs_and_frames(question, options, subtitles):
     ]
     """
 
-def get_text_prompt_onlysubs(question, options, subtitles):
-    return f"""This video's relevant subtitles are listed below, along with time stamps:
-    {subtitles}
-    Select the best answer to the following multiple-choice question based only on the provided subtitles and provide a justification for your answer.
-    In your justification, reference specific subtitles that lead to your prediction.
+def get_text_prompt_onlydt(question, options, transcripts):
+    """Build a prompt using audio transcripts only."""
+
+    return f"""This video's relevant audio transcripts are listed below, along with time stamps:
+    {transcripts}
+    Select the best answer to the following multiple-choice question based only on the provided audio transcripts and provide a justification for your answer.
+    In your justification, reference specific audio transcripts that lead to your prediction.
     Question: {question}
     Options: {options}
     Format your response in json: 
@@ -224,10 +231,12 @@ def get_text_prompt_onlysubs(question, options, subtitles):
     """
 
 def get_text_prompt_onlycaptions(question, options, captions):
+    """Build a prompt using captions only."""
+
     return f"""This video's captions are listed below, along with time stamps and days:
     {captions}
-    Select the best answer to the following multiple-choice question based only on the provided subtitles and provide a justification for your answer.
-    In your justification, reference specific subtitles that lead to your prediction.
+    Select the best answer to the following multiple-choice question based only on the provided captions and provide a justification for your answer.
+    In your justification, reference specific captions that lead to your prediction.
     Question: {question}
     Options: {options}
     Format your response in json: 
@@ -242,8 +251,10 @@ def get_text_prompt_onlycaptions(question, options, captions):
     """
 
 def get_text_prompt_onlyframes(question, options):
+    """Build a prompt using image frames only."""
+
     return f"""
-    Select the best answer to the following multiple-choice question based only on the provided 50 image frames and provide a justification for your answer.
+    Select the best answer to the following multiple-choice question based only on the provided image frames and provide a justification for your answer.
     In your justification, reference specific image frames that lead to your prediction.
     Question: {question}
     Options: {options}
@@ -259,47 +270,22 @@ def get_text_prompt_onlyframes(question, options):
     """
 
 def get_prev_days(days_dict, current_day, window=3):
+    """Return a list of previous days (inclusive) up to the window."""
     keys = list(days_dict.keys())
     idx = keys.index(current_day)
     start = max(0, idx - window + 1)  # ensures we don’t go negative
     return keys[start:idx+1]
 
-def get_subs_multiple_days(days_dict, keys):
+def get_dt_multiple_days(days_dict, keys):
+    """Concatenate audio transcript strings from multiple days."""
     parts = []
     for k in keys:
         parts.append(f"{days_dict[k]}\n")
     return "\n\n".join(parts)
-
-def load_content(content_str: str) -> Optional[List[Dict[str, Any]]]:
-    """
-    Parse a string that may be:
-    1) Proper JSON object with "response": […]
-    2) A list of dicts (Python-style literal)
-    Returns a normalized list of dicts, or None on failure.
-    """
-    try:
-        parsed = json.loads(content_str)
-    except json.JSONDecodeError:
-        parsed = ast.literal_eval(content_str)
-
-    # Normalize into list of dicts
-    if isinstance(parsed, dict) and "response" in parsed and isinstance(parsed["response"], list):
-        return parsed["response"]
-    elif isinstance(parsed, dict) and "mcq_prediction" in parsed:
-        return [parsed]
-    elif isinstance(parsed, list):
-        return parsed
-    else:
-        return None
-        
-def extract_mcq_prediction(content_str: str) -> Optional[str]:
-    items = load_content(content_str)
-    first = items[0]
-    return first.get("mcq_prediction")
-    
+            
 def main():
     egolife_qa_jake = load_egolife_qa_jake()
-    subtitles_dict = get_egolife_diarized_transcripts(remove_diarization=False)
+    transcripts_dict = get_egolife_diarized_transcripts(remove_diarization=False)
     
     # mllm config to run
     args = parse_args()
@@ -313,11 +299,11 @@ def main():
     remove_diarization = args.remove_diarization and use_dt
     
     mcq_language = 'english' # 'chinese', 'english'
-    subs_language = 'english' # 'chinese', 'english', 'chinese+english'
+    transcripts_language = 'english' # 'chinese', 'english', 'chinese+english'
     max_frames= 50 # how many frames can MLLM ingest? e.g. GPT 4.1 and Gemini 2.5 Pro with Azure is max 50
     use_entity_graph = False
     assert (use_visual_oracle or use_dt or use_captions)
-    print(f'Running {mllm} on EgoLifeQA with {mcq_language} questions and {subs_language} diarized transcripts.')
+    print(f'Running {mllm} on EgoLifeQA with {mcq_language} questions and {transcripts_language} diarized transcripts.')
     
     if use_captions:
         results_root = f'../egolife_results/captions/mcq_{mcq_language}'
@@ -325,7 +311,7 @@ def main():
 
     elif not use_visual_oracle:
         results_root = f'../egolife_results/DT_oracle/mcq_{mcq_language}' if use_dt_oracle else f'egolife_results/prevDTdays-{num_prev_days}/mcq_{mcq_language}'
-        results_json = f'{results_root}/{mllm}_DTlang-{subs_language}_removediarization-{remove_diarization}_egolife_results.json'
+        results_json = f'{results_root}/{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
     else:
         results_root = f'../egolife_results/use{max_frames}frames_oracle'
         results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
@@ -340,9 +326,10 @@ def main():
     print(f'Running on {results_json}')
 
     # iterate over all data in egolife
-    for question_data in tqdm(egolife_qa_jake):
+    completed_ids = {e['ID'] for e in final_prediction_list}
+    for question_data in tqdm(egolife_qa_jake, desc="Processing"):
         selected_qid = question_data['ID']
-        if selected_qid in [e['ID'] for e in final_prediction_list]:
+        if selected_qid in completed_ids:
             continue
         query_date = question_data['query_time']['date']
         
@@ -358,14 +345,14 @@ def main():
         if use_dt_oracle:
             # assume we know this (oracle or hopefully with agentic planner)
             target_day = question_data['target_time'][0]['date'].upper() 
-            selected_subtitles = subtitles_dict[target_day]
+            selected_transcripts = transcripts_dict[target_day]
             if use_entity_graph:
                 graph = get_entity_graph_for_day(target_day)
-                selected_subtitles += f'\n Entity Graph of Relationships: {graph}'
+                selected_transcripts += f'\n Entity Graph of Relationships: {graph}'
         else:
             # use previous N days
-            prev_n_days = get_prev_days(subtitles_dict, query_date, window=num_prev_days)
-            selected_subtitles = get_subs_multiple_days(subtitles_dict, prev_n_days)
+            prev_n_days = get_prev_days(transcripts_dict, query_date, window=num_prev_days)
+            selected_transcripts = get_dt_multiple_days(transcripts_dict, prev_n_days)
             
         vqa_question = question_data['question']
         options = f"A.{question_data['choice_a']}, B.{question_data['choice_b']}, C.{question_data['choice_c']}, D.{question_data['choice_d']}"
@@ -376,13 +363,13 @@ def main():
         try:
             if use_dt and use_visual_oracle:
                 image_paths = get_closest_images(target_datetime, base_dir=f"{EGOLIFE_ROOT}/image_1fps_A1_JAKE", total_files=max_frames)
-                master_prompt = get_text_prompt_subs_and_frames(vqa_question, options, selected_subtitles)
+                master_prompt = get_text_prompt_dt_and_frames(vqa_question, options, selected_transcripts)
                 final_prediction = query_multimodal(system_prompt, master_prompt, image_paths, llm_name=mllm)
             elif use_captions:
                 master_prompt = get_text_prompt_onlycaptions(vqa_question, options, all_prev_day_caps)
                 final_prediction = query_text_only(system_prompt, master_prompt, llm_name=mllm)
             elif use_dt:
-                master_prompt = get_text_prompt_onlysubs(vqa_question, options, selected_subtitles)
+                master_prompt = get_text_prompt_onlydt(vqa_question, options, selected_transcripts)
                 final_prediction = query_text_only(system_prompt, master_prompt, llm_name=mllm)
             elif use_visual_oracle:
                 image_paths = get_closest_images(target_datetime, base_dir=f"{EGOLIFE_ROOT}/image_1fps_A1_JAKE", total_files=max_frames)
@@ -394,6 +381,7 @@ def main():
             if use_visual_oracle:
                 final_prediction['oracle_image_paths'] = image_paths
             final_prediction_list.append(final_prediction)
+            completed_ids.add(selected_qid)
             with open(results_json, 'w') as f:
                 json.dump(final_prediction_list, f, indent=4)
         except Exception as e:
@@ -404,7 +392,7 @@ def main():
                 time.sleep(60) # rate limits
             else:
                 encoding = tiktoken.get_encoding("o200k_base")
-                print("QID=", selected_qid, " Input tokens GPT 4.1 = ", len(encoding.encode(string)))
+                print("QID=", selected_qid, " Input tokens GPT 4.1 = ", len(encoding.encode(master_prompt)))
 
 if __name__ == "__main__":
     main()

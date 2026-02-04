@@ -31,11 +31,13 @@ dataset = 'videomme' # videomme, egolife
 mllm = 'gpt-4.1' # multimodal llm used to fuse captions and transcripts
 
 def parse_time(t):
+    """Parse a time string into a datetime object."""
     t = re.sub(r',(\d{1,2})(?!\d)', lambda m: ',' + m.group(1).ljust(3, '0'), t)
     # return datetime.strptime(t, "%H:%M:%S")
     return datetime.strptime(t, "%H:%M:%S,%f")
 
 def parse_caption_range(caption_path):
+    """Parse the start and end times of a caption from a path string."""
     t_str = re.search(r'(\d{8})\.mp4', caption_path).group(1)
     h, m, s, ms = t_str[:2], t_str[2:4], t_str[4:6], t_str[6:]
     # start = parse_time(f"{h}:{m}:{s}")
@@ -44,6 +46,7 @@ def parse_caption_range(caption_path):
     return start, end
 
 def merge_captions_with_transcripts(captions, diarized):
+    """Merge captions with audio transcripts. For each caption, collect overlapping diarized segments."""
     merged = []
     entries = []
 
@@ -68,17 +71,10 @@ def merge_captions_with_transcripts(captions, diarized):
         merged.append(relevant)
 
     return merged
-    
-# --- Helper: extract start time from filename ---
-def extract_time_from_path(path_str):
-    # Example filename: DAY1_A1_JAKE_11094208.mp4
-    match = re.search(r"_(\d{8})\.mp4$", path_str)
-    if not match:
-        return None
-    hh, mm, ss = match.group(1)[:2], match.group(1)[2:4], match.group(1)[4:6]
-    return f"{hh}:{mm}:{ss}"
 
-def get_hourwise_caps_for_day(captioner, json_fname, num_minutes = 5):
+def get_chunkwise_caps_for_day(captioner, json_fname, num_minutes = 5):
+    """Group captions by 10-minute intervals."""
+    
     json_path = Path(json_fname)  # change this to your file path
     with open(json_path, "r") as f:
         data = json.load(f)
@@ -86,6 +82,15 @@ def get_hourwise_caps_for_day(captioner, json_fname, num_minutes = 5):
     # --- Group captions by 10-minute intervals ---
     interval_captions = defaultdict(list)
     
+    def extract_time_from_path(path_str):
+        """Extract the time from an EgoLife path string in the format DAY1_A1_JAKE_11094208.mp4."""
+        # Example filename: DAY1_A1_JAKE_11094208.mp4
+        match = re.search(r"_(\d{8})\.mp4$", path_str)
+        if not match:
+            return None
+        hh, mm, ss = match.group(1)[:2], match.group(1)[2:4], match.group(1)[4:6]
+        return f"{hh}:{mm}:{ss}"
+        
     for entry in data:
         for path, caption in entry.items():
             start_time = extract_time_from_path(path)
@@ -181,6 +186,7 @@ def get_caption_dt_fuser_llm(model='gpt-4.1'):
     return get_llm_worker(fuser_system, fuser_human, FusedCaption, model)
 
 def summarize_captions(captions_file):
+    """Summarize captions for EgoLife at chunk intervals (default 5 minutes)."""
     chunk_num_minutes = 5 # summarize caption chunks of this duration (min)
     results_json = f'captioning/summarized_captions/day{day}_captioner-{captioner}_summarized-{mllm}_{chunk_num_minutes}min-intervals.json'
     if os.path.exists(results_json):
@@ -189,11 +195,10 @@ def summarize_captions(captions_file):
     else:
         final_caption_list = []
     
-    output_by_hour = get_hourwise_caps_for_day(captioner, captions_file, chunk_num_minutes)
+    caption_by_timechunk = get_chunkwise_caps_for_day(captioner, captions_file, chunk_num_minutes)
     cap_summarizer = get_caption_summary_llm(model = mllm)
     
-    # --- Example: print or save to file ---
-    for interval, cap_text in output_by_hour.items():
+    for interval, cap_text in caption_by_timechunk.items():
         # print(f"\n===== Interval starting {interval} =====\n")
         # print(cap_text) ; print()
         if interval in [list(e.keys())[0] for e in final_caption_list]:
@@ -206,13 +211,14 @@ def summarize_captions(captions_file):
             json.dump(final_caption_list, f, indent=4)
 
 def fuse_captions_and_dt_egolife(captions_file):
+    """Fuse captions and diarized transcripts for EgoLife."""
     chunk_num_minutes = 60 # get every hour of captions
     fuser_llm = get_caption_dt_fuser_llm(model=mllm)
     
     with open(captions_file, "r") as f:
         egolife_captions = json.load(f)
 
-    caption_by_timechunk = get_hourwise_caps_for_day(captioner, captions_file, chunk_num_minutes)
+    caption_by_timechunk = get_chunkwise_caps_for_day(captioner, captions_file, chunk_num_minutes)
     diarized_transcripts_dict = get_egolife_diarized_transcripts()
     dt_for_day = diarized_transcripts_dict[f'DAY{day}'].split("\n")
     episodes = [dt_for_day[i] for i in range(len(dt_for_day)) if i%2!=0][:-1] # each hour
@@ -273,16 +279,16 @@ def time_to_seconds(t):
     """Convert HH:MM:SS string to total seconds."""
     h, m, s = map(int, t.split(":"))
     return h * 3600 + m * 60 + s
-    
-# Function to get concatenated transcript for an interval
+
 def get_overlapping_transcript_videomme(df, start_t, end_t):
+    """Get concatenated transcript for an interval of VideoMME."""
     if len(df) == 0:
         return []
     overlaps = df[(df["end_sec"] > start_t) & (df["start_sec"] < end_t)]
     return " ".join(overlaps["transcript_english"].tolist())
 
 def fuse_captions_and_dt_videomme(captions_file):
-
+    """Fuse captions and diarized transcripts for VideoMME."""
     df_videomme = json.loads(pd.read_parquet("/source/data/video-mme/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
     df_videomme_long_vIDs = np.unique([e['videoID'] for e in df_videomme if e['duration'] == 'long'])
     

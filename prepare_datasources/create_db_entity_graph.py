@@ -62,7 +62,7 @@ def extract_day_from_filename(fname: str) -> Optional[int]:
     return None
 
 def build_db_videomme(json_folder: str, dataset: str, config: str) -> None:
-
+    """Build a SQLite DB from all JSON files in json_folder."""
     json_files = sorted(glob.glob(os.path.join(json_folder, '*.json')))
     if not json_files:
         raise FileNotFoundError(f"No JSON files found in folder: {json_folder}")

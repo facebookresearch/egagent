@@ -13,14 +13,14 @@
 # limitations under the License.
 
 
-from baselines import *
+from baselines.baselines import *
 from google import genai
 from google.genai import types
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-root_dir = f'{EGOLIFE_ROOT}/image_1fps_A1_JAKE_384x384'
+root_dir = f'{EGOLIFE_ROOT}/image_1fps_A1_JAKE_384x384' # path to EgoLife (Jake) image frames sampled at 1 fps and resized to 384x384
 
 def filter_images_by_time(folder_path, query_time_str):
     """
@@ -37,7 +37,10 @@ def filter_images_by_time(folder_path, query_time_str):
 
     return filtered_images
     
-def uniformly_sample_previous_n_frames(root_dir, query_day, query_time, num_samples):
+def uniformly_sample_previous_n_frames(root_dir, query_day, query_time, n):
+    """
+    Uniformly sample n frames from the previous days up to the query time on the query day.
+    """
     n_frame_filepaths = []
 
     # add all frames of all previous days
@@ -50,7 +53,7 @@ def uniformly_sample_previous_n_frames(root_dir, query_day, query_time, num_samp
     n_frame_filepaths += ((same_day_files))
 
     # return n uniformly sampled frames from all filepaths until query_time on query_day
-    indices = list(np.linspace(1, len(n_frame_filepaths) - 1, num_samples, dtype=int))
+    indices = list(np.linspace(1, len(n_frame_filepaths) - 1, n, dtype=int))
 
     return [n_frame_filepaths[e] for e in indices]
 
@@ -72,14 +75,18 @@ response :
 ]
 """
 
-# parse HHMMSS-like token to seconds (assumes first 6 chars are HHMMSS)
 def _hhmmss_to_secs(s):
+    """
+    Parse HHMMSS-like token to seconds (assumes first 6 chars are HHMMSS)
+    """
     s = s[:6].zfill(6)
     hh, mm, ss = int(s[:2]), int(s[2:4]), int(s[4:6])
     return hh*3600 + mm*60 + ss
 
-# parse frame path like .../DAY1/11094308.jpg -> (absolute_seconds, day)
 def _frame_path_to_secs(path):
+    """
+    Parse frame path like .../DAY1/11094308.jpg -> (absolute_seconds, day)
+    """
     m = re.search(r'DAY(\d+)[/\\](\d+)', path)
     if not m:
         raise ValueError(f"can't parse day/timestamp from {path}")
@@ -89,7 +96,10 @@ def _frame_path_to_secs(path):
     return _hhmmss_to_secs(ts) + (day - 1) * 86400
 
 def map_frames_to_transcripts(frame_paths, df_transcript):
-    # expects df_transcript columns: 'day','start_t','end_t','transcript_english'
+    """
+    Map frame paths to transcripts.
+    Expects df_transcript columns: 'day','start_t','end_t','transcript_english'
+    """
     # convert transcript times to absolute seconds (day offset included)
     def t_to_abssecs(row, col):
         h, m, s = map(int, row[col].split(':'))
@@ -111,6 +121,9 @@ def map_frames_to_transcripts(frame_paths, df_transcript):
     return mapped
 
 def upload_single_image(client, path):
+    """
+    Upload a single image to the Gemini API.
+    """
     try:
         return client.files.upload(file=path)
     except Exception as e:
@@ -118,6 +131,9 @@ def upload_single_image(client, path):
         return None
 
 def upload_images_parallel(client, image_paths, max_workers=16):
+    """
+    Upload multiple images to the Gemini API in parallel.
+    """
     start = time.time()
     file_refs = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -130,58 +146,45 @@ def upload_images_parallel(client, image_paths, max_workers=16):
     return file_refs
 
 def get_content_for_egolife_qid(client, egolife_qa_jake, qid, n_uniform_samples = 3000):
-        vqa_question = egolife_qa_jake[qid]['question']
-        options = f"""A.{egolife_qa_jake[qid]['choice_a']}, B.{egolife_qa_jake[qid]['choice_b']}, C.{egolife_qa_jake[qid]['choice_c']}, D.{egolife_qa_jake[qid]['choice_d']}"""
-        query_time = egolife_qa_jake[qid]['query_time']
-        query_day = int(query_time['date'][3])
-        query_time_str = timeformatter(query_time['time'])[:-3]
-        prev_n_frames = uniformly_sample_previous_n_frames(root_dir, query_day, query_time_str, n_uniform_samples)
-        system_prompt = 'You are a helpful assistant that answers questions about long videos taken from the first-person perspective of Jake.'
-        query = get_egolife_mllm_text_prompt_with_cot(vqa_question, options)
-        contents = [system_prompt + query]
+    """
+    Get prompt content for a given EgoLifeQA question, including the VQA question, options, and the sampled frames.
+    """
+    vqa_question = egolife_qa_jake[qid]['question']
+    options = f"""A.{egolife_qa_jake[qid]['choice_a']}, B.{egolife_qa_jake[qid]['choice_b']}, C.{egolife_qa_jake[qid]['choice_c']}, D.{egolife_qa_jake[qid]['choice_d']}"""
+    query_time = egolife_qa_jake[qid]['query_time']
+    query_day = int(query_time['date'][3])
+    query_time_str = timeformatter(query_time['time'])[:-3]
+    prev_n_frames = uniformly_sample_previous_n_frames(root_dir, query_day, query_time_str, n_uniform_samples)
+    system_prompt = 'You are a helpful assistant that answers questions about long videos taken from the first-person perspective of Jake.'
+    query = get_egolife_mllm_text_prompt_with_cot(vqa_question, options)
+    contents = [system_prompt + query]
+
+    # upload sampled frames via files API
+    file_refs = upload_images_parallel(client, prev_n_frames, max_workers=16)
     
-        # upload sampled frames via files API
-        file_refs = upload_images_parallel(client, prev_n_frames, max_workers=16)
-        
-        for i in range(len(file_refs)):
-            f = file_refs[i]
-            contents.append(f)  # each 'f' is a file reference
-        return contents
+    for i in range(len(file_refs)):
+        f = file_refs[i]
+        contents.append(f)  # each 'f' is a file reference
+    return contents
     
 
 def main():
-    start_i = int(sys.argv[1])
-    end_i = start_i + 50
     n_uniform_samples = 3000
     results_json = f'../egolife_results/gemini-2.5-pro-uniform-sample-frames+dt-{n_uniform_samples}.json'
-    selected_qids = [i for i in range(start_i, end_i)]
-    
-    # Load and clean formatting inconsistencies in EgoLifeQA (Jake)
-    with open(f"{EGOLIFE_ROOT}/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
-        egolife_qa_jake = json.load(f)    
-    multiple_target_time = []
-    for e in egolife_qa_jake:
-        tt = e['target_time']
-        if isinstance(tt, dict):
-            if'time' not in tt.keys():
-                e['target_time'] = [tt]
-            else:
-                if len(tt['time']) > 8:
-                    e['target_time'] = split_entry(tt)
-                else:
-                    e['target_time'] = convert_singlet_to_list(tt)
+    egolife_qa_jake = load_egolife_qa_jake()
                     
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:
             final_prediction_list = json.load(f)
-        already_done_qids = [int(e['key'].split("-")[-1]) - 1 for e in final_prediction_list]
+        already_done_qids = {int(e['key'].split("-")[-1]) - 1 for e in final_prediction_list}
     else:
         final_prediction_list = []
-        already_done_qids = []
+        already_done_qids = set()
     
     client = genai.Client(api_key=GOOGLE_GENAI_API_KEY)
 
-    file_upload_temp = f"../egolife_results/egolife-batch-fileupload-uris_{selected_qids[0]}-{selected_qids[-1]}.json"
+    selected_qids = list(range(len(egolife_qa_jake)))
+    file_upload_temp = "../egolife_results/egolife-batch-fileupload-uris_all.json"
     if os.path.exists(file_upload_temp):
         with open(file_upload_temp, "r") as f:
             uris = json.load(f)
@@ -209,7 +212,7 @@ def main():
     df_transcript_all_days['start_t'] = df_transcript_all_days['start_t'].str.replace(r',\d{1,3}', '', regex=True) # remove milliseconds
     df_transcript_all_days['end_t'] = df_transcript_all_days['end_t'].str.replace(r',\d{1,3}', '', regex=True)
     
-    payload_file = f"../egolife_results/egolife-batch-qid_{selected_qids[0]}-{selected_qids[-1]}.jsonl"
+    payload_file = "../egolife_results/egolife-batch-qid_all.jsonl"
     print(f'Generating {payload_file}')
     
     with open(payload_file, "w") as f:
@@ -220,7 +223,7 @@ def main():
             query_time = egolife_qa_jake[q]['query_time']
             query_day = int(query_time['date'][3])
             query_time_str = timeformatter(query_time['time'])[:-3]
-            prev_n_frames = uniformly_sample_previous_n_frames(root_dir, query_day, query_time_str, num_samples=3000)
+            prev_n_frames = uniformly_sample_previous_n_frames(root_dir, query_day, query_time_str, n=3000)
             closest_dt_to_uniformly_sampled_frames = map_frames_to_transcripts(prev_n_frames, df_transcript_all_days)
             parts = []
             for i, item in enumerate(content_for_qid[q]):
@@ -248,7 +251,7 @@ def main():
         model="gemini-2.5-pro",
         src=uploaded_file.name,
         config={
-            'display_name': f"egolife-job-qid_{selected_qids[0]}-{selected_qids[-1]}",
+            'display_name': "egolife-job-qid_all",
         },
     )
     

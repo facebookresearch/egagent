@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+from datetime import datetime, timedelta
 import os
 import subprocess
 from multiprocessing import Pool, cpu_count
@@ -26,7 +26,15 @@ INPUT_DIR = Path(f"{DATA_DIR}/EgoLife/{SELECTED_PERSON}/{SELECTED_DAY}")
 OUTPUT_DIR = Path(f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+day = int(SELECTED_DAY[3])
+# Folder containing your frames
+frames_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"   # change this to your folder
+output_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"
+os.makedirs(output_dir, exist_ok=True)
+
+
 def process_video(video_path):
+    """Process a single video to sample 1 frame per second."""
     video_name = video_path.stem.split("_")[-1]
     out_subdir = OUTPUT_DIR / SELECTED_DAY
     out_subdir.mkdir(exist_ok=True)
@@ -39,30 +47,6 @@ def process_video(video_path):
         "-hide_banner", "-loglevel", "error"
     ]
     subprocess.run(cmd, check=True)
-
-def main():
-    mp4_files = list(INPUT_DIR.glob("*.mp4"))
-    if not mp4_files:
-        print("No MP4 files found in", INPUT_DIR)
-        return
-
-    with Pool(processes=cpu_count()) as pool:
-        pool.map(process_video, mp4_files)
-
-    print("Done extracting 1 fps frames from all videos.")
-
-if __name__ == "__main__":
-    main()
-
-
-from datetime import datetime, timedelta
-
-day = int(SELECTED_DAY[3])
-
-# Folder containing your frames
-frames_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"   # change this to your folder
-output_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"
-os.makedirs(output_dir, exist_ok=True)
 
 def parse_time_from_video_name(video_name: str) -> datetime:
     """
@@ -84,7 +68,8 @@ def format_time(dt: datetime) -> str:
     cs = f"{dt.microsecond // 10000:02d}"
     return hms + cs
 
-def rename_videos()
+def rename_videos():
+    """Rename the frames to have the correct timestamp."""
     for fname in os.listdir(frames_dir):
         if not fname.endswith(".jpg"):
             continue
@@ -108,3 +93,18 @@ def rename_videos()
         os.rename(old_path, new_path)
     
     print("Renaming complete.")
+
+def main():
+    """Process all videos to sample 1 frame per second."""
+    mp4_files = list(INPUT_DIR.glob("*.mp4"))
+    if not mp4_files:
+        print("No MP4 files found in", INPUT_DIR)
+        return
+
+    with Pool(processes=cpu_count()) as pool:
+        pool.map(process_video, mp4_files)
+
+    print("Done extracting 1 fps frames from all videos.")
+
+if __name__ == "__main__":
+    main()

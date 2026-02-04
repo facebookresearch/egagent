@@ -9,16 +9,14 @@ First, update the following values in `langgraph_agent.py`:
 2. `agent_backbone`: e.g. GPT 4.1 or Gemini 2.5 Pro
 3. `dataset_root`: path containing EgoLife and Video-MME datasets (HuggingFace)
 
-We divide all MCQ pairs into 5 batches to parallelize inference. For EgoLife (500 questions), each batch has 100 pairs, and for Video-MME (300 videos * 3 questions per video), each batch has 180 pairs.
-
-To run EGAgent on EgoLifeQA on question IDs from 100 to 200:
+To run EGAgent on EgoLifeQA (500 MCQ pairs):
 ```
-python run_egagent_on_egolife.py 100
+python run_egagent_on_egolife.py
 ```
 
-Similarly to run EGAgent on VideoMME-long from question ID 180 to 360:
+To run EGAgent on VideoMME-long (900 MCQ pairs):
 ```
-python run_egagent_on_egolife.py 180
+python run_egagent_on_videomme.py
 ```
 
 ## Merge results

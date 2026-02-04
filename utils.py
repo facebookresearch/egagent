@@ -31,19 +31,23 @@ from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from transformers import AutoProcessor, AutoModel
-from typing import Optional, Any, List, Dict, Literal
+from typing import Optional, Any, List, Dict, Literal, Tuple
 
-model_root = "/source/data/aniketr/models"
+EGOLIFE_ROOT = 'path/to/EgoLife' # path to EgoLife dataset (HF)
+VIDEO_MME_ROOT = 'path/to/VideoMME' # path to VideoMME dataset (HF)
+MODEL_ROOT = 'path/to/models' # containing the embedding model checkpoints
 retriever = "siglip2-giant-opt-patch16-384"
-ckpt = f"{model_root}/{retriever}"
+ckpt = f"{MODEL_ROOT}/{retriever}"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModel.from_pretrained(ckpt, device_map="auto").eval()
 processor = AutoProcessor.from_pretrained(ckpt)
 
 def flatten_list(xss):
+    """Flatten a list of lists into a single list."""
     return [x for xs in xss for x in xs]
 
 def get_base64imagelist_from_filepathlist(retrieved_image_paths):
+    """Get a list of image contents in base64 format from a list of image file paths."""
     image_contents = []
     for image_path in retrieved_image_paths:
         with open(image_path, "rb") as img_file:
@@ -54,26 +58,11 @@ def get_base64imagelist_from_filepathlist(retrieved_image_paths):
             })
     return image_contents
     
-def get_search_idx_for_selected_video(dataset, frames_dir, selected_video: str):
-    import time
-    idx_path = f'indexes/{dataset}/{retriever}/{selected_video}_{retriever}.index'
-    os.makedirs(f'indexes/{dataset}/{retriever}', exist_ok=True)
-    # start = time.time()
-    if not os.path.exists(idx_path):
-        idx, times, embs = index_frames(dataset, frames_dir, selected_video, device, batch_size=1024)
-        faiss.write_index(idx, idx_path)
-        # print(f'Index build time: {time.time() - start: .2f}s')
-    else:
-        idx = faiss.read_index(idx_path)
-        times, embs = None, None
-        # print(f'Index load from disk time: {time.time() - start: .2f}s')
-    return idx, times, embs
-    
-# Vision-capable GPT‑4.1
-def get_vision_llm(llm_name: str):
+def get_vision_llm(llm_name: str) -> ChatOpenAI:
+    """Get a vision-capable LLM using Langchain's ChatOpenAI."""
     vision_llm = ChatOpenAI(
-        api_key=APE_API_KEY,
-        base_url="https://api.wearables-ape.io/models/v1",
+        api_key=OPENAI_API_KEY,
+        base_url="https://api.openai.com/v1",
         max_retries=3,
         model=llm_name,
         temperature=0,
@@ -83,11 +72,11 @@ def get_vision_llm(llm_name: str):
     )
     return vision_llm
 
-# e.g. o3, gpt-5
 def get_reasoning_llm(llm_name: str):
+    """Get a reasoning LLM using Langchain's ChatOpenAI with high reasoning effort, e.g. o3 or gpt-5."""
     vision_llm = ChatOpenAI(
-        api_key=APE_API_KEY,
-        base_url="https://api.wearables-ape.io/models/v1",
+        api_key=OPENAI_API_KEY,
+        base_url="https://api.openai.com/v1",
         max_retries=3,
         model=llm_name,        # e.g. "gpt-5" or "gpt-5-chat"
         temperature=0,
@@ -97,8 +86,8 @@ def get_reasoning_llm(llm_name: str):
     )
     return vision_llm
 
-# e.g. gemini-1.5-pro
 def get_external_gemini_llm(llm_name: str):
+    """Get a Gemini LLM using Langchain's ChatGoogleGenerativeAI, e.g. Gemini 2.5 Pro."""
     gemini_llm = ChatGoogleGenerativeAI(
         api_key=GOOGLE_GENAI_API_KEY,
         model=llm_name,
@@ -110,6 +99,7 @@ def get_external_gemini_llm(llm_name: str):
     return gemini_llm
 
 def get_vLLM(ip_address: str, llm_name: str):
+    """Get a local LLM using Langchain's ChatOpenAI, e.g. Qwen 2.5 VL 7B."""
     qwen_vl_local = ChatOpenAI(
         model=llm_name,
         api_key="EMPTY",
@@ -119,6 +109,7 @@ def get_vLLM(ip_address: str, llm_name: str):
     return qwen_vl_local
 
 def query_text_only(system_prompt, query, llm_name):
+    """Query a text-only LLM using Langchain's ChatOpenAI."""
     messages = [
         {"role": "system", "content": system_prompt},
         {
@@ -139,6 +130,17 @@ def query_text_only(system_prompt, query, llm_name):
     return out
 
 def query_multimodal(system_prompt, query, image_paths, llm_name):
+    """Query a multimodal LLM using Langchain's ChatOpenAI.
+
+    Args:
+        system_prompt: system prompt for the LLM
+        query: query to the LLM
+        image_paths: list of image file paths
+        llm_name: name of the LLM
+
+    Returns:
+        output from the LLM
+    """
     image_contents = []
     for image_path in image_paths:
         with open(image_path, "rb") as img_file:
@@ -168,35 +170,17 @@ def query_multimodal(system_prompt, query, image_paths, llm_name):
     out = llm_client.invoke(messages)
     return out
 
-# todo: delete the below and replace with query_multimodal wherever it is used
-def query_llm_langchain_multiple_images(system_prompt, query, image_paths, llm_name):
-    image_contents = []
-    for image_path in image_paths:
-        with open(image_path, "rb") as img_file:
-            img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-            image_contents.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{img_base64}"},
-            })
+def embed_frames_batch(images, device: torch.device, batch_size: int = 256) -> np.ndarray:
+    """Embed a batch of images using the embedding model.
     
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": query,
-                },
-                *image_contents
-            ],
-        },
-    ]
-    llm_client = get_vision_llm(llm_name)
-    out = llm_client.invoke(messages)
-    return out
+    Args:
+        images: list of PIL Image objects
+        device: device to use for the embedding model
+        batch_size: batch size for the embedding model
 
-def embed_frames_batch(images: list, device, batch_size=256):
+    Returns:
+        embeddings of the images
+    """
     from tqdm import tqdm
     all_embeddings = []
     num_batches = (len(images) + batch_size - 1) // batch_size  # ceiling division
@@ -209,7 +193,17 @@ def embed_frames_batch(images: list, device, batch_size=256):
         all_embeddings.append(embs)
     return np.vstack(all_embeddings)
 
-def embed_texts_batch(texts: list, device, batch_size=128):
+def embed_texts_batch(texts: list, device: torch.device, batch_size: int = 128) -> np.ndarray:
+    """Embed a batch of text using the embedding model.
+    
+    Args:
+        texts: list of text strings
+        device: device to use for the embedding model
+        batch_size: batch size for the embedding model
+
+    Returns:
+        embeddings of the text
+    """
     all_embs = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i+batch_size]
@@ -229,28 +223,26 @@ def embed_texts_batch(texts: list, device, batch_size=128):
     return np.vstack(all_embs)
     
 def get_file_contents(filename):
-    """ Given a filename,
-        return the contents of that file
-    """
+    """ Given a filename, return the contents of that file"""
     try:
         with open(filename, 'r') as f:
-            # It's assumed our file contains a single line,
-            # with our API key
+            # It's assumed our file contains a single line, e.g. with our API key
             return f.read().strip()
     except FileNotFoundError:
-        print("'%s' file not found" % filename)
+        raise FileNotFoundError(f"'{filename}' file not found")
 
-GOOGLE_GENAI_API_KEY = get_file_contents('/home/aniketr/intern_github/aniket/google-genai-key.txt')
-OPENAI_API_KEY = get_file_contents('/home/aniketr/intern_github/aniket/openai-api-key.txt')
-APE_API_KEY = get_file_contents('/home/aniketr/intern_github/aniket/ape-key-yuliang.txt')
+GOOGLE_GENAI_API_KEY = get_file_contents('path/to/google-genai-key.txt')
+OPENAI_API_KEY = get_file_contents('path/to/openai-api-key.txt')
 
-def get_50_frames_from_video(image_dir:str, n_samples=50):
+def get_50_frames_from_video(image_dir:str, n_samples=50) -> Tuple[int, List[str]]:
+    """Get 50 image frames from a video."""
     image_files = sorted(f for f in os.listdir(image_dir) if f.endswith('.jpg'))
     total_images = len(image_files)
     sample_indices = np.linspace(0, total_images - 1, n_samples, dtype=int) # Generate n_samples evenly spaced indices
     return total_images, [f'{image_dir}/{image_files[i]}' for i in sample_indices]
 
 def seconds_to_hhmmss(seconds_str):
+    """Convert seconds to HHMMSS format."""
     seconds = int(seconds_str)
     h = seconds // 3600
     m = (seconds % 3600) // 60
@@ -262,6 +254,7 @@ def clean_html_tags(text):
     return re.sub(r'<.*?>', '', text).strip()
     
 def preprocess_srt_content(subtitles):
+    """ Preprocess the content of an SRT file by converting the start and end times to milliseconds and removing HTML tags."""
     return [
         {
             'start': start,  # Convert to milliseconds
@@ -272,10 +265,12 @@ def preprocess_srt_content(subtitles):
     ]
     
 def load_srt(path):
+    """Load an SRT file and return a list of tuples containing the start time, end time, and text."""
     subs = pysrt.open(path)
     return [(s.start.ordinal/1000.0, s.end.ordinal/1000.0, s.text.strip()) for s in subs]
 
-def load_srt_hhmmss(path):
+def load_srt_hhmmss(path: str) -> List[str]:
+    """Load an SRT file and return a list of strings formatted as "start --> end : 'text'" for each subtitle."""
     subs = pysrt.open(path)
     results = []
     for s in subs:
@@ -285,7 +280,8 @@ def load_srt_hhmmss(path):
         results.append(f"{start} --> {end} : '{text}'")
     return results
 
-def load_srt_only_text(path):
+def load_srt_only_text(path: str) -> str:
+    """Load only the text from an SRT file and return a string with all the text concatenated."""
     subs = pysrt.open(path)
     results = ""
     for s in subs:
@@ -303,8 +299,13 @@ def parse_offset_from_filename(filename: str, include_day: bool = False) -> time
     Extract offset from filenames like DAY4_11000000.srt.
     Filenames are encoded in centiseconds (HHMMSScc).
     Example: 11000000 -> 11:00:00.00 (cs).
-    
-    Returns offset as timedelta in milliseconds.
+
+    Args:
+        filename: path to the SRT file
+        include_day: whether to include the day in the output path
+
+    Returns:
+        offset as timedelta in milliseconds
     """
     name = Path(filename).name
     m = re.search(r"DAY(?P<day>\d+)_?(?P<time>\d{8})", name, flags=re.IGNORECASE)
@@ -330,8 +331,15 @@ def parse_offset_from_filename(filename: str, include_day: bool = False) -> time
 
 def shift_srt_file(input_path: str, output_path: str = None, include_day: bool = False) -> str:
     """
-    Read an SRT, shift all ' --> ' lines by offset from filename (centisecond-based),
-    write output. Returns output path.
+    Read an SRT, shift all ' --> ' lines by offset from filename (centisecond-based), and write output. Returns output path.
+
+    Args:
+        input_path: path to the SRT file
+        output_path: path to the output SRT file
+        include_day: whether to include the day in the output path
+
+    Returns:
+        list of strings formatted as "start --> end : 'text'" for each subtitle
     """
     offset = parse_offset_from_filename(input_path, include_day=include_day)
 
@@ -350,13 +358,16 @@ def shift_srt_file(input_path: str, output_path: str = None, include_day: bool =
     return new_lines
     
 
-def search_sql(conn, day, start, end, query_embs, topk, dataset='egolife'):
+def search_sql(conn: sqlite3.Connection, day: str, start: int, end: int, query_embs: np.ndarray, topk: int, dataset: str = 'egolife') -> List[Tuple[str, float]]:
     """
-    conn: SQLite connection
-    day: e.g. "day1"
-    start, end: ints like 1310, 1320
-    query_embs: np.ndarray, shape (N_q, D) or (D,)
-    topk: number of top results to keep per query
+    Search for top k semantically similar image frames to text query between a specified start time and end time on a specified day.
+
+    Args:
+        conn: SQLite connection
+        day: e.g. "day1"
+        start, end: ints like 1310, 1320
+        query_embs: np.ndarray, shape (N_q, D) or (D,)
+        topk: number of top results to keep per query
 
     Returns: list of shortlisted (path, score) tuples
     """
@@ -393,8 +404,6 @@ def search_sql(conn, day, start, end, query_embs, topk, dataset='egolife'):
 
     db_embs = np.stack(db_embs)  # (N_db, D)
     N_db = db_embs.shape[0]
-    # print(f'query: {query_embs.shape}')
-    # print(f'DB: {db_embs.shape}')
     
     # Normalize (so cosine similarity is just dot product)
     query_norm = query_embs / np.linalg.norm(query_embs, axis=1, keepdims=True)
@@ -406,14 +415,13 @@ def search_sql(conn, day, start, end, query_embs, topk, dataset='egolife'):
     if k <= 0:
         return []
     
+    # Top-k indices for each query
     if k == N_db:
         # full sort (descending) -> deterministic ordering
         topk_idx = np.argsort(-sims, axis=1)[:, :k]
     else:
         # faster partial selection when k < N_db
         topk_idx = np.argpartition(-sims, k - 1, axis=1)[:, :k] # (N_q, topk)
-    # # Top-k indices for each query
-    # topk_idx = np.argpartition(-sims, topk, axis=1)[:, :topk]  
 
     # Flatten across queries → frequency count
     shortlist = topk_idx.flatten()
@@ -433,7 +441,18 @@ def search_sql(conn, day, start, end, query_embs, topk, dataset='egolife'):
     return final_results
 
 
-def keep_english_subs(input_path, remove_diarization=True, newlines=None):
+def keep_english_subs(input_path: str, remove_diarization: bool = False, newlines: List[str] = None) -> List[str]:
+    """
+    Keep only English subtitles and remove diarization names.
+
+    Args:
+        input_path: path to the SRT file
+        remove_diarization: whether to remove diarization names
+        newlines: list of lines from the SRT file
+
+    Returns:
+        list of cleaned lines
+    """
     cleaned_lines = []
     skip_chinese = re.compile(r"[\u4e00-\u9fff]")  # regex to detect CJK characters
     diarization_names = ["Jake", "Tasha", "Shure", "Katrina", "Alice", "Lucia", "Nicous", "Choiszt", "Violet", "Jack"]
@@ -464,16 +483,23 @@ def keep_english_subs(input_path, remove_diarization=True, newlines=None):
     return cleaned_lines
 
     
-def get_egolife_diarized_transcripts(participants: List[str] = ['A1_JAKE'], remove_diarization=False):
+def get_egolife_diarized_transcripts(participants: List[str] = ['A1_JAKE'], remove_diarization=False) -> Dict[str, str]:
     """
     Return a dictionary of diarized transcripts provided by EgoLife for each day.
+
+    Args:
+        participants: list of participants to get transcripts for
+        remove_diarization: whether to remove diarization names
+
+    Returns:
+        dictionary of diarized transcripts for each day with the format {day: subtitles}
     """
     subtitles_dict = {}
     sub_token_count_per_day = []
 
     for p in participants:
         for day in range(7):
-            subs_path = f'/source/data/aniketr/EgoLife/EgoLifeCap/Transcript/{p}/DAY{day+1}'
+            subs_path = f'{EGOLIFE_ROOT}/EgoLifeCap/Transcript/{p}/DAY{day+1}'
             srt_files = sorted(glob.glob(os.path.join(subs_path, "*.srt")))
             
             all_texts = []
@@ -489,7 +515,16 @@ def get_egolife_diarized_transcripts(participants: List[str] = ['A1_JAKE'], remo
     return subtitles_dict
 
 
-def get_egolife_transcript_df(participants: List[str] = ['A1_JAKE']):
+def get_egolife_transcript_df(participants: List[str] = ['A1_JAKE']) -> pd.DataFrame:
+    """
+    Get a DataFrame of diarized transcripts for all days for a specified participant.
+
+    Args:
+        participants: list of participants to get transcripts for
+
+    Returns:
+        DataFrame of diarized transcripts for all days for the specified participant
+    """
     transcript_file = f'transcript_csv/diarized_transcripts_all_days_JAKE.csv'
     if os.path.exists(transcript_file):
         return pd.read_csv(transcript_file)
@@ -497,7 +532,7 @@ def get_egolife_transcript_df(participants: List[str] = ['A1_JAKE']):
     for p in participants:
         dfs = []
         for day in range(7):
-            subs_path = f'/source/data/aniketr/EgoLife/EgoLifeCap/Transcript/A1_JAKE/DAY{day+1}'
+            subs_path = f'{EGOLIFE_ROOT}/EgoLifeCap/Transcript/A1_JAKE/DAY{day+1}'
             srt_files = sorted(glob.glob(os.path.join(subs_path, "*.srt")))
             for file_path in srt_files:        
                 df_temp = parse_egolife_srt_to_df(file_path, day=day+1)
@@ -513,6 +548,14 @@ def get_egolife_transcript_df(participants: List[str] = ['A1_JAKE']):
 
 
 def get_videomme_transcript_df(selected_video):
+    """Get a DataFrame of transcripts for a specified video from Video-MME (Long).
+
+    Args:
+        selected_video: name of the video from Video-MME (Long)
+
+    Returns:
+        DataFrame of transcripts for the specified video
+    """
     transcript_file = f'transcript_csv/videomme/transcript-{selected_video}.csv'
     if os.path.exists(transcript_file):
         return pd.read_csv(transcript_file)
@@ -539,14 +582,16 @@ def get_videomme_transcript_df(selected_video):
 
 
 def get_videomme_transcripts_for_vid(selected_video):
+    """Get a list of audio transcripts for a specified video from Video-MME (Long)."""
     df_transcript = get_videomme_transcript_df(selected_video)
     eng_transcripts_to_search = list(df_transcript['transcript_english'].values)
     return eng_transcripts_to_search, df_transcript
 
 
-timeformatter = lambda s : f"{s[0:2]}:{s[2:4]}:{s[4:6]},{s[6:8]}"
+timeformatter = lambda s : f"{s[0:2]}:{s[2:4]}:{s[4:6]},{s[6:8]}" # format time as HH:MM:SS,mmm
 
-def get_egolife_transcripts_for_qid(query_time):
+def get_egolife_transcripts_for_qid(query_time: Dict[str, str]) -> Tuple[List[str], pd.DataFrame]:
+    """Get a list of audio transcripts for a specified query time from EgoLife."""
     df_transcript_all_days = get_egolife_transcript_df()
 
     current_day = int(query_time['date'][3])
@@ -569,7 +614,16 @@ def get_egolife_transcripts_for_qid(query_time):
     return eng_transcripts_to_search, df_final
 
     
-def parse_egolife_srt_to_df(srt_path, day=1):
+def parse_egolife_srt_to_df(srt_path: str, day: int = 1) -> pd.DataFrame:
+    """Parse an SRT file to a DataFrame.
+    
+    Args:
+        srt_path: path to the SRT file
+        day: day of the SRT file
+
+    Returns:
+        DataFrame of transcripts for the specified video
+    """
     offset = parse_offset_from_filename(srt_path)
     
     with open(srt_path, 'r', encoding='utf-8') as f:
@@ -613,6 +667,13 @@ def shift_timestamp(ts: str, offset: timedelta) -> str:
     """
     Shift SRT timestamp (HH:MM:SS,mmm) by offset.
     Input is in milliseconds, offset is timedelta (ms).
+
+    Args:
+        ts: timestamp string in HH:MM:SS,mmm format
+        offset: offset to shift the timestamp by
+
+    Returns:
+        shifted timestamp string in HH:MM:SS,mmm format
     """
     h, m, s_ms = ts.strip().split(":")
     s, ms = s_ms.split(",")
@@ -632,7 +693,12 @@ def load_content(content_str: str) -> Optional[List[Dict[str, Any]]]:
     Parse a string that may be:
     1) Proper JSON object with "response": […]
     2) A list of dicts (Python-style literal)
-    Returns a normalized list of dicts, or None on failure.
+    
+    Args:
+        content_str: string to parse
+
+    Returns:
+        normalized list of dicts, or None if parsing fails
     """
     # Try JSON first
     try:
@@ -655,6 +721,7 @@ def load_content(content_str: str) -> Optional[List[Dict[str, Any]]]:
         return None
         
 def extract_mcq_prediction(content_str: str) -> Optional[str]:
+    """Extract the MCQ prediction from the LLM response string."""
     items = load_content(content_str)
     if not items:
         return None
@@ -664,9 +731,9 @@ def extract_mcq_prediction(content_str: str) -> Optional[str]:
     return None
 
 
-# load and clean up egolife_qa time formatting inconsistencies
 def load_egolife_qa_jake():
-    with open("/source/data/aniketr/EgoLife/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
+    """Load and clean up formatting of EgoLifeQA (Jake)."""
+    with open(f"{EGOLIFE_ROOT}/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
         egolife_qa_jake = json.load(f)
 
     def split_entry(entry):
@@ -702,12 +769,12 @@ def load_egolife_qa_jake():
         return [{"date": day, "time_list": times} for day, times in per_day.items()]
 
     def convert_singlet_to_list(entry):
+        """Convert a single target time to a list of target times."""
         return [{
             "date": entry["date"],
             "time_list": [entry["time"]]
         }]
     
-    multiple_target_time = []
     for e in egolife_qa_jake:
         tt = e['target_time']
         if isinstance(tt, dict):
@@ -720,8 +787,8 @@ def load_egolife_qa_jake():
                     e['target_time'] = convert_singlet_to_list(tt)
     return egolife_qa_jake
 
-# merge results of egagent batches to single json from config
-def merge_results(config, agent_backbone):
+def merge_batched_results(config, agent_backbone):
+    """Merge results of egagent batches to a single JSON file (if batching is used)."""
     merged_json = []
     for batch_json in glob.glob(f'egagent/{config}_start*'):
         with open(batch_json, 'r') as file:

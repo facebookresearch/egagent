@@ -27,12 +27,11 @@ import pandas as pd
 from pydantic import BaseModel, parse_obj_as
 import pysrt
 import re
-import sqlite3
 import sys
 import time
 from typing import Literal, List, Dict, Any, Optional
 
-from utils import get_vision_llm, get_egolife_diarized_transcripts
+from utils import get_vision_llm, get_egolife_diarized_transcripts, load_srt_hhmmss, load_srt_only_text, clean_html_tags, seconds_to_hhmmss
 
 dataset = 'videomme' # videomme, egolife
 
@@ -110,6 +109,7 @@ def get_rel_timestamper_llm(model, config):
         return get_llm_worker(rel_timestamper_system, rel_timestamper_user_caption, RelationshipsOutput, model)
 
 async def generate_graph_for_hour(text:str):
+    """Generate the entity graph for one hour of EgoLife or entire VideoMME video."""
     allowed_nodes = ["Person", "Location", "Object"]
     allowed_relationships = ["TALKS_TO", "INTERACTS_WITH", "MENTIONS", "USES"]
     llm = get_vision_llm('gpt-4.1')
@@ -123,6 +123,7 @@ async def generate_graph_for_hour(text:str):
     return graph_documents
 
 def parse_relationships(graph_documents):
+    """Parse the relationships from the entity graph for one hour of EgoLife or entire VideoMME video."""
     relationships_parsed = []
     for i, rel in enumerate(graph_documents[0].relationships):
         r = {}
@@ -135,31 +136,9 @@ def parse_relationships(graph_documents):
         relationships_parsed.append(r)
     return relationships_parsed
 
-def clean_html_tags(text):
-        """Removes HTML tags from the subtitle text."""
-        return re.sub(r'<.*?>', '', text).strip()
 
-def load_srt_formatted(path):
-    subs = pysrt.open(path)
-    results = []
-    for s in subs:
-        start = str(s.start).split(',')[0]  # e.g. "00:00:00"
-        end = str(s.end).split(',')[0]      # e.g. "00:00:02"
-        text = clean_html_tags(s.text.strip())
-        results.append(f"{start} --> {end} : '{text}'")
-    return results
-
-def load_srt_only_text(path):
-    subs = pysrt.open(path)
-    results = ""
-    for s in subs:
-        text = clean_html_tags(s.text.strip())
-        results += text + "  " 
-    return results
-
-
-# add egolife raw transcript to graph
 def diarized_list_to_dict(lst):
+    """Convert a list of diarized transcripts to a list of dictionaries with start, end, and transcript."""
     results = []
     i = 0
     while i < len(lst):
@@ -190,12 +169,13 @@ def diarized_list_to_dict(lst):
     return results
 
 def time_to_ms(t):
-    # Convert 'HH:MM:SS,mmm' to milliseconds
+    """Convert 'HH:MM:SS,mmm' to milliseconds."""
     h, m, s = t.split(':')
     s, ms = s.split(',')
     return (int(h)*3600 + int(m)*60 + int(s))*1000 + int(ms)
     
 def add_dtranscripts_to_rel_dict(dt_hour, rel_with_timestamps):
+    """Add diarized transcripts to the relationships dictionary."""
     raw_dt_dict = diarized_list_to_dict(ast.literal_eval(dt_hour))
     # Precompute timestamps in ms
     dt_times = [(time_to_ms(d['start']), d['transcript']) for d in raw_dt_dict]
@@ -269,21 +249,15 @@ def attach_transcripts_to_videomme_graph(scene_graph, subtitles_with_timestamps)
     return scene_graph
 
 def extract_time_from_path(path_str):
-    # Example filename: DAY1_A1_JAKE_11094208.mp4
+    """Extract the time from an EgoLife path string in the format DAY1_A1_JAKE_11094208.mp4."""
     match = re.search(r"_(\d{8})\.mp4$", path_str)
     if not match:
         return None
     hh, mm, ss = match.group(1)[:2], match.group(1)[2:4], match.group(1)[4:6]
     return f"{hh}:{mm}:{ss}"
-
-def seconds_to_hhmmss(seconds_str):
-    seconds = int(seconds_str)
-    h = seconds // 3600
-    m = (seconds % 3600) // 60
-    s = seconds % 60
-    return f"{h:02d}{m:02d}{s:02d}"
     
 def add_start_and_end_times_to_egolife_captions(context_for_hour):
+    """Add start and end times to the captions for EgoLife."""
     for entry in context_for_hour:
         for path, caption in entry.items():
             start_time = extract_time_from_path(path)
@@ -293,6 +267,7 @@ def add_start_and_end_times_to_egolife_captions(context_for_hour):
     return context_for_hour
 
 def add_start_and_end_times_to_videomme_captions(context_for_hour):
+    """Add start and end times to the captions for VideoMME."""
     window_duration = 64 # each window captions 64 seconds
     for entry in context_for_hour:
         for w_num, (window, caption_content) in enumerate(entry.items()):
@@ -303,6 +278,7 @@ def add_start_and_end_times_to_videomme_captions(context_for_hour):
 
 
 async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt-4.1'):
+    """Extract the entity graph for one day of EgoLife, hour by hour. Then add timestamps to the relationships."""
     diarized_transcripts_dict = get_egolife_diarized_transcripts()
     dt_for_day = diarized_transcripts_dict[f'DAY{day}'].split("\n")
     episodes = [dt_for_day[i] for i in range(len(dt_for_day)) if i%2!=0][:-1] # each hour
@@ -363,11 +339,12 @@ async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt
 
 
 async def extract_entity_graph_videomme(config, selected_video, captioner):
+    """Extract the entity graph for one VideoMME video. Then add timestamps to the relationships."""
     rel_timestamper = get_rel_timestamper_llm(model='gpt-4.1', config=config)
     asr_dir = '/source/data/video-mme/subtitle'
 
     subtitles_only_text = load_srt_only_text(f'{asr_dir}/{selected_video}.srt') if os.path.exists(f'{asr_dir}/{selected_video}.srt') else ""
-    subtitles_with_timestamps = load_srt_formatted(f'{asr_dir}/{selected_video}.srt') if os.path.exists(f'{asr_dir}/{selected_video}.srt') else ""
+    subtitles_with_timestamps = load_srt_hhmmss(f'{asr_dir}/{selected_video}.srt') if os.path.exists(f'{asr_dir}/{selected_video}.srt') else ""
 
     ofilename = f'timestamp_episodes/{config}/videomme/{selected_video}.json'
     rel_outfile = f'timestamp_episodes/{config}/videomme/relationships/{selected_video}_relationships.json'

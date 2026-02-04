@@ -27,12 +27,12 @@ use_visual_oracle = False
 use_captions = False and (not use_visual_oracle)
 use_dt = True and (not use_captions)
 use_dt_oracle = True and use_dt # tells us which day to look at diarized transcript (DT)
-num_prev_days = (not use_dt_oracle) * (use_dt) * 4 # 3, 4
+num_prev_days = (not use_dt_oracle) * (use_dt) * 3 # 3, 4
 remove_diarization = False and use_dt
 
 mcq_language = 'english' # 'chinese', 'english'
-subs_language = 'english' # 'chinese', 'english', 'chinese+english'
-max_frames= 50 # how many frames can MLLM ingest? e.g. GPT 4.1 and Gemini 2.5 Pro with APE / Azure is 50 max
+transcripts_language = 'english' # 'chinese', 'english', 'chinese+english'
+max_frames= 50 # how many frames can MLLM ingest? e.g. GPT 4.1 and Gemini 2.5 Pro with Azure is 50 max
 use_entity_graph = False
 print()
 
@@ -44,7 +44,7 @@ if use_captions:
 elif not use_visual_oracle:
     print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
     results_root = f'egolife_results/diarized_transcripts/DT_oracle/mcq_{mcq_language}' if use_dt_oracle else f'egolife_results/diarized_transcripts/prevDTdays-{num_prev_days}/mcq_{mcq_language}'
-    results_json = f'{results_root}/{mllm}_DTlang-{subs_language}_removediarization-{remove_diarization}_egolife_results.json'
+    results_json = f'{results_root}/{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
     
 else:
     print(f'Evaluating visual oracle with {max_frames} frames.')
@@ -80,8 +80,8 @@ print()
 
 
 ## Gemini 2.5 Pro Uniform Sampling (3000 frames + transcripts) eval
-
 print(f'Evaluating Gemini 2.5 Pro Uniform Sampling (3000 f + t)')
+
 mllm_baseline = f'egolife_results/gemini-2.5-pro-uniform-sample-frames+dt-3000.json'
 with open(mllm_baseline, 'r') as file:
     results_mllm_baseline = json.load(file)
@@ -123,17 +123,25 @@ print(f'Acc = {(correct)} / {len(results_mllm_baseline)} = {(correct) / len(resu
 
 
 ## EGAgent Eval
-
 print(f'Evaluating EGAgent')
+
 def count_tokens(results):
+    """Count total tokens used by the MLLM."""
     tokens = [e['total_tokens'] for e in results if 'total_tokens' in e.keys()]
     return tokens
 
 def print_acc(dataset, agent_backbone, config, results):
+    """Print accuracy of the MLLM."""
     correct = [e for e in results if e['answer'] == e['mcq_prediction']]
     print(f'{dataset}: {agent_backbone} with {config}, Acc = {len(correct)} / {len(results)} = {len(correct) / len(results) * 100: .2f}%')
 
 def get_eg_f_t_agent_results(agent_backbone = 'gpt-4.1'):
+    """
+    Get results of the EGAgent using three search tools:
+    1. Visual frame search
+    2. Entity graph search on entity graph extracted from fused diarized transcript (DT) and captions
+    3. LLM search on raw diarized transcript (DT)
+    """
     results_json = f'egolife_results/agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+entitygraph-dtonly-and-dtcaptionfuse+dt-llmsearch_results.json' 
     with open(results_json, 'r') as file:
         agent_results = json.load(file)

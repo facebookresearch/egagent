@@ -17,41 +17,35 @@ Creates a SQLite table 'frames' with columns:
   day(str) timestamp (str), path (str), embedding (blob)
 """
 
+import json
 import numpy as np
 import os
+import pandas as pd
 from PIL import Image
+import sqlite3
 import torch
 import time
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModel
-import sqlite3
-
-model_root = "" # path to embedding model checkpoints
-dataset_root = "" # path to egolife and videomme datasets
-
-# Load embedding model
-retriever = "siglip2-giant-opt-patch16-384"
-ckpt = f"{model_root}/{retriever}"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = AutoModel.from_pretrained(ckpt, device_map="auto").eval()
-processor = AutoProcessor.from_pretrained(ckpt)
-
-def embed_frames_batch(images: list, device, batch_size=256):
-    all_embeddings = []
-    num_batches = (len(images) + batch_size - 1) // batch_size  # ceiling division
-    for i in tqdm(range(0, len(images), batch_size), total=num_batches, desc="Embedding batches"):
-        batch = images[i:i+batch_size]
-        inputs = processor(images=batch, return_tensors="pt", padding="max_length").to(device)
-        with torch.no_grad():
-            outputs = model.vision_model(pixel_values=inputs.pixel_values)
-            embs = outputs.pooler_output.cpu().numpy()
-        all_embeddings.append(embs)
-    return np.vstack(all_embeddings)
+from typing import List
+from utils import embed_frames_batch, EGOLIFE_ROOT, VIDEO_MME_ROOT
 
 def np_to_blob(array: np.ndarray) -> bytes:
+    """Convert a numpy array to a blob."""
     return array.astype(np.float32).tobytes()
 
-def process_egolife_day(day_num, frames_dir, device, batch_size=256):
+def process_egolife_day(day_num: int, frames_dir: str, device: torch.device, batch_size: int = 256) -> None:
+    """Process a single day of EgoLife frames and embed them into a SQLite DB.
+    
+    Args:
+        day_num: day number (1-7)
+        frames_dir: directory containing the frames
+        device: device to use for the embedding model
+        batch_size: batch size for the embedding model
+
+    Returns:
+        None
+    """
     start = time.time()
     db_path = f"dbs/egolife/egolife_jake_frames_day{day_num}.db"
     conn = sqlite3.connect(db_path)
@@ -95,7 +89,8 @@ def process_egolife_day(day_num, frames_dir, device, batch_size=256):
     print(f"Finished DAY{day_num}, saved to {db_path} in time = {time.time() - start: .2f}sec")
 
 # merge all EgoLife day-wise tables into single table across days
-def merge_day_dbs(output_db, day_dbs):
+def merge_day_dbs(output_db: str, day_dbs: List[str]) -> None:
+    """Merge all EgoLife day-wise tables into a single table across days."""
     conn_out = sqlite3.connect(output_db)
     cur_out = conn_out.cursor()
 
@@ -129,9 +124,10 @@ def merge_day_dbs(output_db, day_dbs):
     conn_out.close()
     print(f"All merged into {output_db}")
     
-def process_videomme_video(vidname):
+def process_videomme_video(vidname: str, dataset_root: str) -> None:
+    """Process a single video from Video-MME and embed its frames into a SQLite DB."""
     start = time.time()
-    frames_dir = f'{dataset_root}/video-mme/video_1fps/{selected_video}/'
+    frames_dir = f'{dataset_root}/video-mme/video_1fps/{vidname}/'
     db_path = f"frames_db/videomme/videomme_frames_{vidname}.db"
     if os.path.exists(db_path):
         return
@@ -165,7 +161,7 @@ def process_videomme_video(vidname):
         timestamps.append(ts)
 
     # batch embeddings
-    embs_path = "" # path to .npy files of embeddings of each video in videomme (long)
+    embs_path = "/path/to/videomme_embeddings" # path to .npy files of embeddings of each video in videomme (long)
     embs = np.load(f'{embs_path}/{vidname}_{retriever}.npy').astype('float32')
     assert embs.shape[0] == len(files)
     
@@ -185,8 +181,9 @@ def process_videomme_video(vidname):
 # Example usage
 # ----------------------------
 if __name__ == "__main__":
+    """Process the frames of EgoLife and VideoMME and embed them into a SQLite DB."""
     dataset = 'egolife' # egolife, videomme
-    
+    dataset_root = EGOLIFE_ROOT if dataset == 'egolife' else VIDEO_MME_ROOT # path to EgoLife and VideoMME datasets (HuggingFace)
     if dataset == 'egolife':
         for selected_day in range(1, 8):
             frames_dir = f'{dataset_root}/EgoLife/image_1fps_A1_JAKE/DAY{selected_day}'
@@ -199,4 +196,4 @@ if __name__ == "__main__":
         videomme_long = [e for e in df_videomme if e['duration'] == 'long']
         for v in videomme_long:
             selected_video = v['videoID']
-            process_videomme_video(selected_video)
+            process_videomme_video(selected_video, dataset_root)

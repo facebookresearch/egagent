@@ -307,53 +307,51 @@ def egolife_inference():
     app = workflow.compile()
 
     
-    # Inference over EgoLifeQA batch
-    batch_offset = 100
-    start_idx = int(sys.argv[1])
-    end_idx = start_idx + batch_offset
-    results_json = f'egagent_egolifeqa_results_{batch_offset}.json'
+    # Inference over the full EgoLifeQA dataset
+    total_questions = len(egolife_qa_jake)
+    results_json = 'egagent_egolifeqa_results_all.json'
     print(f'Generating ', results_json)
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:
             final_prediction_list = json.load(f)
     else:
         final_prediction_list = []
-    print(f'Done with {len(final_prediction_list)} / {batch_offset}')
+    print(f'Done with {len(final_prediction_list)} / {total_questions}')
     
-    while(len(final_prediction_list) < batch_offset):
-        for i in tqdm(range(start_idx, end_idx), desc="Processing"):
-            results = {}
-            selected_qid = f'{i+1}'
-            if selected_qid in [e['ID'] for e in final_prediction_list]:
-                print(f'Skipping {selected_qid}, already done')
-                continue
-            question_data = [e for e in egolife_qa_jake if e['ID'] == selected_qid][0]
+    completed_ids = {e['ID'] for e in final_prediction_list}
+    for question_data in tqdm(egolife_qa_jake, desc="Processing"):
+        results = {}
+        selected_qid = question_data['ID']
+        if selected_qid in completed_ids:
+            print(f'Skipping {selected_qid}, already done')
+            continue
             
-            vqa_question = question_data['question']
-            options = f"""A.{question_data['choice_a']}\nB.{question_data['choice_b']}\nC.{question_data['choice_c']}\nD.{question_data['choice_d']}"""
-            answer = question_data['answer']
-            query_time = question_data['query_time']
-            transcripts = tscript_dict[query_time['date']]
-            day_search_dict = get_egolife_daysearchdict(query_time)
-            working_memory_init = "The long video is taken from the first-person perspective of Jake. "
+        vqa_question = question_data['question']
+        options = f"""A.{question_data['choice_a']}\nB.{question_data['choice_b']}\nC.{question_data['choice_c']}\nD.{question_data['choice_d']}"""
+        answer = question_data['answer']
+        query_time = question_data['query_time']
+        transcripts = tscript_dict[query_time['date']]
+        day_search_dict = get_egolife_daysearchdict(query_time)
+        working_memory_init = "The long video is taken from the first-person perspective of Jake. "
 
-            # try:
-            value = run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init)
-            
-            results['ID'] = selected_qid
-            results['question'] = vqa_question
-            results['options'] = options
-            results['answer'] = answer
-            results['plan'] = value["plan"]
-            results['working_memory'] = value['working_memory']
-            results['mcq_prediction'] = value["answer"].mcq_prediction
-            results['justification'] = value["answer"].justification
-            results['total_tokens'] = value["total_tokens"]
-            final_prediction_list.append(results)
-            with open(results_json, 'w') as f:
-                json.dump(final_prediction_list, f, indent=4)
-            # except Exception as e:
-            #     print(e)
+        # try:
+        value = run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init)
+        
+        results['ID'] = selected_qid
+        results['question'] = vqa_question
+        results['options'] = options
+        results['answer'] = answer
+        results['plan'] = value["plan"]
+        results['working_memory'] = value['working_memory']
+        results['mcq_prediction'] = value["answer"].mcq_prediction
+        results['justification'] = value["answer"].justification
+        results['total_tokens'] = value["total_tokens"]
+        final_prediction_list.append(results)
+        completed_ids.add(selected_qid)
+        with open(results_json, 'w') as f:
+            json.dump(final_prediction_list, f, indent=4)
+        # except Exception as e:
+        #     print(e)
 
 if __name__ == "__main__":
     egolife_inference()

@@ -28,16 +28,12 @@ from utils import *
 
 dataset = "egolife" # videomme, egolife
 agent_backbone = 'gpt-4.1' # gpt-4.1 (default), gemini-2.5-pro, gpt-4o, qwen-2.5-vl-7b
-dataset_root = '' # path to EgoLife and VideoMME datasets
+dataset_root = EGOLIFE_ROOT if dataset == 'egolife' else VIDEO_MME_ROOT # path to EgoLife and VideoMME datasets (HuggingFace)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-if dataset == 'videomme':
-    frames_dir = f'{dataset_root}/video-mme/video_1fps'
-    asr_dir = f'{dataset_root}/video-mme/subtitle'
-elif dataset == 'egolife':
-    frames_dir = f'{dataset_root}/EgoLife/image_1fps_A1_JAKE'
-    asr_dir = f'{dataset_root}/EgoLife/EgoLifeCap/Transcript/A1_JAKE/'
+frames_dir = f'{dataset_root}/image_1fps_A1_JAKE' if dataset == 'egolife' else f'{dataset_root}/video-mme/video_1fps'
+asr_dir = f'{dataset_root}/EgoLifeCap/Transcript/A1_JAKE/' if dataset == 'egolife' else f'{dataset_root}/video-mme/subtitle'
 
 MAX_PLANNING_STEPS = 5
 MAX_FRAMES_FOR_MLLM = 50 # GPT 4.1
@@ -574,7 +570,6 @@ def get_retrieval_params_sql(state):
     return {"retriever_queries": retrieval_params.text_queries, "start_t": retrieval_params.start_t, "end_t": retrieval_params.end_t}
 
 
-
 def retrieve_frames_sql(state):
     """
     Retrieve relevant video frames from sql
@@ -624,7 +619,7 @@ def retrieve_transcripts(state):
     return {"working_memory": working_memory}
 
 
-# extracts from default egolife filepath format
+# Extract day and time from filepath (default egolife filepath format)
 extract_day_and_time = lambda filepath: f'{timeformatter(filepath.split("/")[-1][:-4])[:-3]} on {filepath.split("/")[-2]}'
 
 def analyze_retrieved_frames(state):
