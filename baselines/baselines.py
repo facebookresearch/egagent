@@ -22,10 +22,10 @@ import time
 import tiktoken
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from paths import EGOLIFE_CAPTION_ROOT, RESULTS_ROOT, TIMESTAMP_EPISODES_ROOT
 from utils import *
 
 client = genai.Client(api_key = GOOGLE_GENAI_API_KEY)
-egolife_caption_root = 'path/to/egolife/captions' # path to EgoLife captions
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Configure agent and data settings")
@@ -149,7 +149,8 @@ def get_entity_graph_for_day(day='DAY1'):
     all_entries = []
 
     # iterate over all hours in a day
-    for file in sorted(glob.glob(f"timestamp_episodes/{day}_hour*.json")):
+    pattern = TIMESTAMP_EPISODES_ROOT / f"{day}_hour*.json"
+    for file in sorted(glob.glob(str(pattern))):
         with open(file, "r") as f:
             data = json.load(f)
             all_entries.extend(data)
@@ -160,9 +161,9 @@ def load_egolife_captions_for_day(day, query_day, query_time, captioner = 'gpt-4
     """Load captions for a day, truncated at the query time for the query day."""
 
     if captioner in ['gpt-4.1_summarized', 'llava-video-7b_summarized']:
-        captions_file = f'{egolife_caption_root}/summarized_captions/day{day}_captioner-{captioner}-gpt-4.1_5min-intervals.json'
+        captions_file = f'{EGOLIFE_CAPTION_ROOT}/summarized_captions/day{day}_captioner-{captioner}-gpt-4.1_5min-intervals.json'
     else:
-        captions_file = f'{egolife_caption_root}/{captioner}_captions/egolife-jake/{captioner}_day{day}_1fps-captions.json'
+        captions_file = f'{EGOLIFE_CAPTION_ROOT}/{captioner}_captions/egolife-jake/{captioner}_day{day}_1fps-captions.json'
     with open(captions_file, "r") as f:
         egolife_captions = json.load(f)
 
@@ -306,15 +307,15 @@ def main():
     print(f'Running {mllm} on EgoLifeQA with {mcq_language} questions and {transcripts_language} diarized transcripts.')
     
     if use_captions:
-        results_root = f'../egolife_results/captions/mcq_{mcq_language}'
-        results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+        results_root = RESULTS_ROOT / f'captions/mcq_{mcq_language}'
+        results_json = results_root / f'{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
 
     elif not use_visual_oracle:
-        results_root = f'../egolife_results/DT_oracle/mcq_{mcq_language}' if use_dt_oracle else f'egolife_results/prevDTdays-{num_prev_days}/mcq_{mcq_language}'
-        results_json = f'{results_root}/{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
+        results_root = (RESULTS_ROOT / f'DT_oracle/mcq_{mcq_language}') if use_dt_oracle else (RESULTS_ROOT / f'prevDTdays-{num_prev_days}/mcq_{mcq_language}')
+        results_json = results_root / f'{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
     else:
-        results_root = f'../egolife_results/use{max_frames}frames_oracle'
-        results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+        results_root = RESULTS_ROOT / f'use{max_frames}frames_oracle'
+        results_json = results_root / f'{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
     os.makedirs(results_root, exist_ok=True)
     
     if os.path.exists(results_json):

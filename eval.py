@@ -15,6 +15,7 @@
 
 import json 
 from baselines.baselines import *
+from paths import RESULTS_ROOT
 
 ## Load and clean up formatting of EgoLifeQA
 egolife_qa_jake = load_egolife_qa_jake()
@@ -38,20 +39,20 @@ print()
 
 if use_captions:
     print(f'Evaluating {mllm} with 1FPS captions before query time.')
-    results_root = f'egolife_results/captions/mcq_{mcq_language}'
-    results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+    results_root = RESULTS_ROOT / f'captions/mcq_{mcq_language}'
+    results_json = results_root / f'{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
     
 elif not use_visual_oracle:
     print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
-    results_root = f'egolife_results/diarized_transcripts/DT_oracle/mcq_{mcq_language}' if use_dt_oracle else f'egolife_results/diarized_transcripts/prevDTdays-{num_prev_days}/mcq_{mcq_language}'
-    results_json = f'{results_root}/{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
+    results_root = (RESULTS_ROOT / f'diarized_transcripts/DT_oracle/mcq_{mcq_language}') if use_dt_oracle else (RESULTS_ROOT / f'diarized_transcripts/prevDTdays-{num_prev_days}/mcq_{mcq_language}')
+    results_json = results_root / f'{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
     
 else:
     print(f'Evaluating visual oracle with {max_frames} frames.')
     if use_dt:
         print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Evaluating using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
-    results_root = f'egolife_results/use{max_frames}frames_oracle'
-    results_json = f'{results_root}/{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
+    results_root = RESULTS_ROOT / f'use{max_frames}frames_oracle'
+    results_json = results_root / f'{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
 
 print(results_json)
 if os.path.exists(results_json):
@@ -82,7 +83,7 @@ print()
 ## Gemini 2.5 Pro Uniform Sampling (3000 frames + transcripts) eval
 print(f'Evaluating Gemini 2.5 Pro Uniform Sampling (3000 f + t)')
 
-mllm_baseline = f'egolife_results/gemini-2.5-pro-uniform-sample-frames+dt-3000.json'
+mllm_baseline = RESULTS_ROOT / 'gemini-2.5-pro-uniform-sample-frames+dt-3000.json'
 with open(mllm_baseline, 'r') as file:
     results_mllm_baseline = json.load(file)
 
@@ -142,14 +143,14 @@ def get_eg_f_t_agent_results(agent_backbone = 'gpt-4.1'):
     2. Entity graph search on entity graph extracted from fused diarized transcript (DT) and captions
     3. LLM search on raw diarized transcript (DT)
     """
-    results_json = f'egolife_results/agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+entitygraph-dtonly-and-dtcaptionfuse+dt-llmsearch_results.json' 
+    results_json = RESULTS_ROOT / f'agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+entitygraph-dtonly-and-dtcaptionfuse+dt-llmsearch_results.json'
     with open(results_json, 'r') as file:
         agent_results = json.load(file)
     return agent_results
 
 dataset = 'egolife'
 agent_backbone = 'gpt-4.1'
-results_json = f'egolife_results/agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+dt-llmsearch_results.json'
+results_json = RESULTS_ROOT / f'agent_{agent_backbone}/egolife_agentic-{agent_backbone}_visual+dt-llmsearch_results.json'
 with open(results_json, 'r') as file:
     agent_gpt41_ft = json.load(file)
 print_acc(dataset, 'gpt-4.1', "F + T", agent_gpt41_ft)

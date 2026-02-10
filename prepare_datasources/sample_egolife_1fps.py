@@ -17,19 +17,24 @@ import os
 import subprocess
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
+import sys
+
+# Allow running this script from inside prepare_datasources/
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from paths import EGOLIFE_DATA_DIR
 
 SELECTED_PERSON = "A1_JAKE" # this is the only person for whom QA are published as of Dec 1, 2025.
 SELECTED_DAY = "DAY7"
-DATA_DIR = "" # path to egolife dataset 
 
-INPUT_DIR = Path(f"{DATA_DIR}/EgoLife/{SELECTED_PERSON}/{SELECTED_DAY}")
-OUTPUT_DIR = Path(f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}")
-OUTPUT_DIR.mkdir(exist_ok=True)
+INPUT_DIR = Path(f"{EGOLIFE_DATA_DIR}/EgoLife/{SELECTED_PERSON}/{SELECTED_DAY}")
+OUTPUT_DIR = Path(f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 day = int(SELECTED_DAY[3])
 # Folder containing your frames
-frames_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"   # change this to your folder
-output_dir = f"{DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"
+frames_dir = f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"   # change this to your folder
+output_dir = f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"
 os.makedirs(output_dir, exist_ok=True)
 
 

@@ -14,6 +14,7 @@
 
 
 from baselines.baselines import *
+from paths import RESULTS_ROOT
 from google import genai
 from google.genai import types
 import glob
@@ -170,7 +171,7 @@ def get_content_for_egolife_qid(client, egolife_qa_jake, qid, n_uniform_samples 
 
 def main():
     n_uniform_samples = 3000
-    results_json = f'../egolife_results/gemini-2.5-pro-uniform-sample-frames+dt-{n_uniform_samples}.json'
+    results_json = RESULTS_ROOT / f'gemini-2.5-pro-uniform-sample-frames+dt-{n_uniform_samples}.json'
     egolife_qa_jake = load_egolife_qa_jake()
                     
     if os.path.exists(results_json):
@@ -184,7 +185,7 @@ def main():
     client = genai.Client(api_key=GOOGLE_GENAI_API_KEY)
 
     selected_qids = list(range(len(egolife_qa_jake)))
-    file_upload_temp = "../egolife_results/egolife-batch-fileupload-uris_all.json"
+    file_upload_temp = RESULTS_ROOT / "egolife-batch-fileupload-uris_all.json"
     if os.path.exists(file_upload_temp):
         with open(file_upload_temp, "r") as f:
             uris = json.load(f)
@@ -212,7 +213,7 @@ def main():
     df_transcript_all_days['start_t'] = df_transcript_all_days['start_t'].str.replace(r',\d{1,3}', '', regex=True) # remove milliseconds
     df_transcript_all_days['end_t'] = df_transcript_all_days['end_t'].str.replace(r',\d{1,3}', '', regex=True)
     
-    payload_file = "../egolife_results/egolife-batch-qid_all.jsonl"
+    payload_file = RESULTS_ROOT / "egolife-batch-qid_all.jsonl"
     print(f'Generating {payload_file}')
     
     with open(payload_file, "w") as f:

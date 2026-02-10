@@ -25,6 +25,8 @@ import re
 import sqlite3
 from typing import Optional, Tuple, List, Any
 
+from paths import DB_ROOT, ENTITYGRAPH_DB_ROOT, TIMESTAMP_EPISODES_ROOT
+
 # ----------------------------
 # Timestamp helper
 # ----------------------------
@@ -70,7 +72,7 @@ def build_db_videomme(json_folder: str, dataset: str, config: str) -> None:
           
     for jf in json_files:
         video_id = jf.split("/")[-1][:-5] # remove .json
-        db_path = f"./entitygraph_db/{dataset}/{config}/videomme_{video_id}.db"
+        db_path = ENTITYGRAPH_DB_ROOT / f"{dataset}/{config}/videomme_{video_id}.db"
         
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
@@ -267,8 +269,8 @@ if __name__ == "__main__":
     dataset = 'egolife' # egolife, videomme
     config = 'diarized_transcripts_only' # diarized_transcripts_only, fused_dt_and_gpt-4.1_captions, fused_dt_and_llava-video-7bcaptions
     
-    json_folder = f"./timestamp_episodes/{config}/{dataset}/"
-    db_path = f"./dbs/{dataset}/{dataset}_entity_graph_{config}.db"
+    json_folder = TIMESTAMP_EPISODES_ROOT / f"{config}/{dataset}/"
+    db_path = DB_ROOT / f"{dataset}/{dataset}_entity_graph_{config}.db"
 
     print("Building DB...")
 

@@ -21,21 +21,27 @@ import json
 import numpy as np
 import os
 import pandas as pd
+from pathlib import Path
 import pysrt
 import torch
 import base64
-import faiss
 import re
 import sqlite3
+from tqdm import tqdm
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from transformers import AutoProcessor, AutoModel
 from typing import Optional, Any, List, Dict, Literal, Tuple
 
-EGOLIFE_ROOT = 'path/to/EgoLife' # path to EgoLife dataset (HF)
-VIDEO_MME_ROOT = 'path/to/VideoMME' # path to VideoMME dataset (HF)
-MODEL_ROOT = 'path/to/models' # containing the embedding model checkpoints
+from paths import (
+    EGOLIFE_ROOT,
+    VIDEO_MME_ROOT,
+    MODEL_ROOT,
+    GOOGLE_GENAI_KEY_PATH,
+    OPENAI_API_KEY_PATH,
+    RESULTS_ROOT,
+)
 retriever = "siglip2-giant-opt-patch16-384"
 ckpt = f"{MODEL_ROOT}/{retriever}"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -181,7 +187,6 @@ def embed_frames_batch(images, device: torch.device, batch_size: int = 256) -> n
     Returns:
         embeddings of the images
     """
-    from tqdm import tqdm
     all_embeddings = []
     num_batches = (len(images) + batch_size - 1) // batch_size  # ceiling division
     for i in tqdm(range(0, len(images), batch_size), total=num_batches, desc="Embedding batches"):
@@ -231,8 +236,8 @@ def get_file_contents(filename):
     except FileNotFoundError:
         raise FileNotFoundError(f"'{filename}' file not found")
 
-GOOGLE_GENAI_API_KEY = get_file_contents('path/to/google-genai-key.txt')
-OPENAI_API_KEY = get_file_contents('path/to/openai-api-key.txt')
+GOOGLE_GENAI_API_KEY = get_file_contents(GOOGLE_GENAI_KEY_PATH)
+OPENAI_API_KEY = get_file_contents(OPENAI_API_KEY_PATH)
 
 def get_50_frames_from_video(image_dir:str, n_samples=50) -> Tuple[int, List[str]]:
     """Get 50 image frames from a video."""
@@ -289,10 +294,6 @@ def load_srt_only_text(path: str) -> str:
         results += text + "  " 
     return results
 
-
-import re
-from datetime import timedelta
-from pathlib import Path
 
 def parse_offset_from_filename(filename: str, include_day: bool = False) -> timedelta:
     """
@@ -799,5 +800,5 @@ def merge_batched_results(config, agent_backbone):
                 print(batch_json)
                 print(e)
     if len(merged_json) > 0:
-        with open(f'egolife_results/agent_{agent_backbone}/{config}.json', 'w') as output_file:
+        with open(RESULTS_ROOT / f'agent_{agent_backbone}/{config}.json', 'w') as output_file:
             json.dump(merged_json, output_file, ensure_ascii=False, indent=4)

@@ -90,7 +90,7 @@ def videomme_inference():
     df_videomme_long = [e for e in df_videomme if e['duration'] == 'long']
     
     total_questions = len(df_videomme_long)
-    results_json = 'egagent_videomme-long_results_all.json'
+    results_json = RESULTS_ROOT / 'egagent_videomme-long_results_all.json'
     print(f'Generating ', results_json)
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:

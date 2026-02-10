@@ -13,16 +13,12 @@
 # limitations under the License.
 
 
-import os, sys
 import bm25s
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import os
-import sys
-from tqdm import tqdm
+from paths import DB_ROOT, RESULTS_ROOT
+from langgraph_agent import *
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from langgraph_agent import *
 
 logging.getLogger('bm25s').setLevel(logging.WARNING)
 
@@ -77,10 +73,10 @@ def search_entity_graph(state):
     results = ""
     
     if dataset == 'egolife':
-        conn_eg = sqlite3.connect(f"./dbs/{dataset}/egolife_jake_entity_graph_dtonly_concatwith_fused_dt_and_gpt-4.1captions.db")
+        conn_eg = sqlite3.connect(DB_ROOT / f"{dataset}/egolife_jake_entity_graph_dtonly_concatwith_fused_dt_and_gpt-4.1captions.db")
     elif dataset == 'videomme':
         selected_video = state["selected_video"]
-        conn_eg = sqlite3.connect(f"./dbs/{dataset}/dtonly_concatwith_fused_dt_and_llava-video-7bcaptions/videomme_{selected_video}.db")
+        conn_eg = sqlite3.connect(DB_ROOT / f"{dataset}/dtonly_concatwith_fused_dt_and_llava-video-7bcaptions/videomme_{selected_video}.db")
     cursor = conn_eg.cursor()
     
     logger.debug('CURRENT STEP:', current_task)
@@ -309,7 +305,7 @@ def egolife_inference():
     
     # Inference over the full EgoLifeQA dataset
     total_questions = len(egolife_qa_jake)
-    results_json = 'egagent_egolifeqa_results_all.json'
+    results_json = RESULTS_ROOT / 'egagent_egolifeqa_results_all.json'
     print(f'Generating ', results_json)
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:

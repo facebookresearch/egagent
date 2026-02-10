@@ -24,6 +24,7 @@ from langgraph.graph import END, StateGraph, START
 import logging
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
+from paths import DB_ROOT
 from utils import *
 
 dataset = "egolife" # videomme, egolife
@@ -51,10 +52,10 @@ def frame_retriever_sql(start_t, end_t, selected_video: str, queries: list[str],
     """
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     if dataset == 'egolife':
-        db_path = f"./dbs/{dataset}/egolife_jake_frames.db"
+        db_path = DB_ROOT / f"{dataset}/egolife_jake_frames.db"
         selected_video = selected_video.lower()
     elif dataset == 'videomme':
-        db_path = f"./dbs/{dataset}/videomme_frames_{selected_video}.db"
+        db_path = DB_ROOT / f"{dataset}/videomme_frames_{selected_video}.db"
         selected_video = "day1"
     conn = sqlite3.connect(db_path)
     query_emb = embed_texts_batch(queries, device) # (N_q, 1152)

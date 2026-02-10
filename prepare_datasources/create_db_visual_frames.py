@@ -28,7 +28,8 @@ import time
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModel
 from typing import List
-from utils import embed_frames_batch, EGOLIFE_ROOT, VIDEO_MME_ROOT
+from paths import DB_ROOT, FRAMES_DB_ROOT, VMME_EMBS_PATH, EGOLIFE_ROOT, VIDEO_MME_ROOT
+from utils import embed_frames_batch
 
 def np_to_blob(array: np.ndarray) -> bytes:
     """Convert a numpy array to a blob."""
@@ -47,7 +48,7 @@ def process_egolife_day(day_num: int, frames_dir: str, device: torch.device, bat
         None
     """
     start = time.time()
-    db_path = f"dbs/egolife/egolife_jake_frames_day{day_num}.db"
+    db_path = DB_ROOT / f"egolife/egolife_jake_frames_day{day_num}.db"
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -128,7 +129,7 @@ def process_videomme_video(vidname: str, dataset_root: str) -> None:
     """Process a single video from Video-MME and embed its frames into a SQLite DB."""
     start = time.time()
     frames_dir = f'{dataset_root}/video-mme/video_1fps/{vidname}/'
-    db_path = f"frames_db/videomme/videomme_frames_{vidname}.db"
+    db_path = FRAMES_DB_ROOT / f"videomme/videomme_frames_{vidname}.db"
     if os.path.exists(db_path):
         return
     conn = sqlite3.connect(db_path)
@@ -161,8 +162,7 @@ def process_videomme_video(vidname: str, dataset_root: str) -> None:
         timestamps.append(ts)
 
     # batch embeddings
-    embs_path = "/path/to/videomme_embeddings" # path to .npy files of embeddings of each video in videomme (long)
-    embs = np.load(f'{embs_path}/{vidname}_{retriever}.npy').astype('float32')
+    embs = np.load(f'{VMME_EMBS_PATH}/{vidname}_{retriever}.npy').astype('float32')
     assert embs.shape[0] == len(files)
     
     # insert timestamps, filepaths and embeddings into table
@@ -188,8 +188,8 @@ if __name__ == "__main__":
         for selected_day in range(1, 8):
             frames_dir = f'{dataset_root}/EgoLife/image_1fps_A1_JAKE/DAY{selected_day}'
             process_egolife_day(selected_day, frames_dir, device, batch_size=256)
-        day_dbs = [f"dbs/egolife/egolife_jake_frames_day{d}.db" for d in range(1, 8)]
-        merge_day_dbs("dbs/egolife/egolife_jake_frames.db", day_dbs)
+        day_dbs = [DB_ROOT / f"egolife/egolife_jake_frames_day{d}.db" for d in range(1, 8)]
+        merge_day_dbs(DB_ROOT / "egolife/egolife_jake_frames.db", day_dbs)
         
     elif dataset == 'videomme':
         df_videomme = json.loads(pd.read_parquet(f"{dataset_root}/video-mme/videomme/test-00000-of-00001.parquet").to_json(orient='records'))

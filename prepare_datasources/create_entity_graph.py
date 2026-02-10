@@ -31,6 +31,10 @@ import sys
 import time
 from typing import Literal, List, Dict, Any, Optional
 
+# Allow running this script from inside prepare_datasources/
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from paths import PROCESSED_CAPTION_ROOT, TIMESTAMP_EPISODES_ROOT, VMME_ASR_DIR
 from utils import get_vision_llm, get_egolife_diarized_transcripts, load_srt_hhmmss, load_srt_only_text, clean_html_tags, seconds_to_hhmmss
 
 dataset = 'videomme' # videomme, egolife
@@ -285,13 +289,13 @@ async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt
     rel_timestamper = get_rel_timestamper_llm(model='gpt-4.1', config=config)
     
     for hour in range(len(episodes)):
-        ofilename = f'timestamp_episodes/{config}/egolife/day{day}_hour{hour+1}.json'
-        rel_outfile = f'timestamp_episodes/{config}/egolife/relationships/day{day}_hour{hour+1}_relationships.json'
+        ofilename = TIMESTAMP_EPISODES_ROOT / f'{config}/egolife/day{day}_hour{hour+1}.json'
+        rel_outfile = TIMESTAMP_EPISODES_ROOT / f'{config}/egolife/relationships/day{day}_hour{hour+1}_relationships.json'
         if os.path.exists(ofilename):
             continue
 
         if config == f'fused_dt_and_{captioner}captions':
-            with open(f'captioning/fused_dt_and_{captioner}captions/{captioner}_day{day}_hour{hour+1}.json', "r") as f:
+            with open(PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner}captions/{captioner}_day{day}_hour{hour+1}.json', "r") as f:
                 context_for_hour = add_start_and_end_times_to_egolife_captions(json.load(f))
         elif config == 'diarized_transcripts_only':
             context_for_hour = episodes[hour]
@@ -341,15 +345,14 @@ async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt
 async def extract_entity_graph_videomme(config, selected_video, captioner):
     """Extract the entity graph for one VideoMME video. Then add timestamps to the relationships."""
     rel_timestamper = get_rel_timestamper_llm(model='gpt-4.1', config=config)
-    asr_dir = '/source/data/video-mme/subtitle'
 
-    subtitles_only_text = load_srt_only_text(f'{asr_dir}/{selected_video}.srt') if os.path.exists(f'{asr_dir}/{selected_video}.srt') else ""
-    subtitles_with_timestamps = load_srt_hhmmss(f'{asr_dir}/{selected_video}.srt') if os.path.exists(f'{asr_dir}/{selected_video}.srt') else ""
+    subtitles_only_text = load_srt_only_text(f'{VMME_ASR_DIR}/{selected_video}.srt') if os.path.exists(f'{VMME_ASR_DIR}/{selected_video}.srt') else ""
+    subtitles_with_timestamps = load_srt_hhmmss(f'{VMME_ASR_DIR}/{selected_video}.srt') if os.path.exists(f'{VMME_ASR_DIR}/{selected_video}.srt') else ""
 
-    ofilename = f'timestamp_episodes/{config}/videomme/{selected_video}.json'
-    rel_outfile = f'timestamp_episodes/{config}/videomme/relationships/{selected_video}_relationships.json'
+    ofilename = TIMESTAMP_EPISODES_ROOT / f'{config}/videomme/{selected_video}.json'
+    rel_outfile = TIMESTAMP_EPISODES_ROOT / f'{config}/videomme/relationships/{selected_video}_relationships.json'
     if config == f'fused_dt_and_{captioner}captions':
-        with open(f'captioning/fused_dt_and_{captioner}captions/gpt-4.1_{selected_video}.json', "r") as f:
+        with open(PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner}captions/gpt-4.1_{selected_video}.json', "r") as f:
             context_for_hour = add_start_and_end_times_to_videomme_captions(json.load(f))
     elif config == 'diarized_transcripts_only':
         context_for_hour = subtitles_only_text

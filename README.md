@@ -17,6 +17,9 @@ conda env create -f environment.yml
 conda activate egagent
 ```
 
+## Configure Paths
+Update dataset, model, and API key locations in `paths.py` before running the scripts.
+
 ## Create Data Sources for Tool Querying
 We create data sources for the visual search tool and entity graph in `prepare_datasources/`. The audio transcripts are queried on the fly and do not require an explicit data source.
 
