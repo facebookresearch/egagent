@@ -26,10 +26,15 @@ import sqlite3
 import torch
 import time
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoModel
 from typing import List
-from paths import DB_ROOT, FRAMES_DB_ROOT, VMME_EMBS_PATH, EGOLIFE_ROOT, VIDEO_MME_ROOT
-from utils import embed_frames_batch
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from paths import DB_ROOT, VMME_EMBS_PATH, EGOLIFE_ROOT, VIDEO_MME_ROOT
+from retrieval_model import device, embed_frames_batch
+
+if not os.path.exists(DB_ROOT):
+    os.makedirs(DB_ROOT)
 
 def np_to_blob(array: np.ndarray) -> bytes:
     """Convert a numpy array to a blob."""
@@ -49,6 +54,7 @@ def process_egolife_day(day_num: int, frames_dir: str, device: torch.device, bat
     """
     start = time.time()
     db_path = DB_ROOT / f"egolife/egolife_jake_frames_day{day_num}.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -129,9 +135,10 @@ def process_videomme_video(vidname: str, dataset_root: str) -> None:
     """Process a single video from Video-MME and embed its frames into a SQLite DB."""
     start = time.time()
     frames_dir = f'{dataset_root}/video-mme/video_1fps/{vidname}/'
-    db_path = FRAMES_DB_ROOT / f"videomme/videomme_frames_{vidname}.db"
+    db_path = DB_ROOT / f"videomme/videomme_frames_{vidname}.db"
     if os.path.exists(db_path):
         return
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -186,7 +193,7 @@ if __name__ == "__main__":
     dataset_root = EGOLIFE_ROOT if dataset == 'egolife' else VIDEO_MME_ROOT # path to EgoLife and VideoMME datasets (HuggingFace)
     if dataset == 'egolife':
         for selected_day in range(1, 8):
-            frames_dir = f'{dataset_root}/EgoLife/image_1fps_A1_JAKE/DAY{selected_day}'
+            frames_dir = f'{dataset_root}/image_1fps_A1_JAKE/DAY{selected_day}'
             process_egolife_day(selected_day, frames_dir, device, batch_size=256)
         day_dbs = [DB_ROOT / f"egolife/egolife_jake_frames_day{d}.db" for d in range(1, 8)]
         merge_day_dbs(DB_ROOT / "egolife/egolife_jake_frames.db", day_dbs)

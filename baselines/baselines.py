@@ -22,7 +22,6 @@ import time
 import tiktoken
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from paths import EGOLIFE_CAPTION_ROOT, RESULTS_ROOT, TIMESTAMP_EPISODES_ROOT
 from utils import *
 
 client = genai.Client(api_key = GOOGLE_GENAI_API_KEY)

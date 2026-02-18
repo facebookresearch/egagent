@@ -22,36 +22,42 @@ import sys
 # Allow running this script from inside prepare_datasources/
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from paths import EGOLIFE_DATA_DIR
+from paths import EGOLIFE_ROOT
 
-SELECTED_PERSON = "A1_JAKE" # this is the only person for whom QA are published as of Dec 1, 2025.
-SELECTED_DAY = "DAY7"
+SELECTED_PERSON = "A1_JAKE"  # only person with published QA as of Dec 1, 2025
+DAYS = [f"DAY{d}" for d in range(1, 8)]  # DAY1 .. DAY7
 
-INPUT_DIR = Path(f"{EGOLIFE_DATA_DIR}/EgoLife/{SELECTED_PERSON}/{SELECTED_DAY}")
-OUTPUT_DIR = Path(f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-day = int(SELECTED_DAY[3])
-# Folder containing your frames
-frames_dir = f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"   # change this to your folder
-output_dir = f"{EGOLIFE_DATA_DIR}/EgoLife/image_1fps_{SELECTED_PERSON}/DAY{day}"
-os.makedirs(output_dir, exist_ok=True)
+# Root for 1 fps frames (e.g. EGOLIFE_ROOT/image_1fps_A1_JAKE/)
+output_dir = Path(f"{EGOLIFE_ROOT}/image_1fps_{SELECTED_PERSON}")
+output_dir.mkdir(exist_ok=True)
 
 
-def process_video(video_path):
-    """Process a single video to sample 1 frame per second."""
+def process_video(video_path: Path, day_dir: Path) -> None:
+    """Extract 1 frame per second from a single video into day_dir."""
     video_name = video_path.stem.split("_")[-1]
-    out_subdir = OUTPUT_DIR / SELECTED_DAY
-    out_subdir.mkdir(exist_ok=True)
-    # FFmpeg command to sample 1 frame per second
     cmd = [
         "ffmpeg",
         "-i", str(video_path),
         "-vf", "fps=1",
-        str(out_subdir / f"{video_name}_%02d.jpg"),
+        str(day_dir / f"{video_name}_%02d.jpg"),
         "-hide_banner", "-loglevel", "error"
     ]
     subprocess.run(cmd, check=True)
+
+
+def process_one_day(day_name: str) -> None:
+    """Process all videos for one day: extract 1 fps frames, then rename to timestamps."""
+    input_dir = Path(f"{EGOLIFE_ROOT}/{SELECTED_PERSON}/{day_name}")
+    day_dir = output_dir / day_name
+    day_dir.mkdir(parents=True, exist_ok=True)
+    mp4_files = sorted(input_dir.glob("*.mp4"))
+    if not mp4_files:
+        print(f"No MP4 files in {input_dir}, skipping.")
+        return
+    for video_path in mp4_files:
+        process_video(video_path, day_dir)
+    rename_frames_to_timestamps(day_dir)
+    print(f"Done {day_name}.")
 
 def parse_time_from_video_name(video_name: str) -> datetime:
     """
@@ -73,43 +79,29 @@ def format_time(dt: datetime) -> str:
     cs = f"{dt.microsecond // 10000:02d}"
     return hms + cs
 
-def rename_videos():
+def rename_frames_to_timestamps(day_dir: Path):
     """Rename the frames to have the correct timestamp."""
-    for fname in os.listdir(frames_dir):
-        if not fname.endswith(".jpg"):
+    for fname in day_dir.iterdir():
+        if fname.suffix != ".jpg":
             continue
-        
-        base, idx = fname.split("_")
-        frame_idx = int(idx.split(".")[0])  # e.g. "_01.jpg" -> 1
-        
-        # Parse start time from video name
+        stem = fname.stem  # e.g. "11094208_01"
+        if "_" not in stem:
+            continue
+        base, idx = stem.split("_", 1)
+        frame_idx = int(idx)
         start_dt = parse_time_from_video_name(base)
-        
-        # Add (frame_idx - 1) seconds
         frame_dt = start_dt + timedelta(seconds=frame_idx - 1)
-        
-        # Format new filename
         new_name = format_time(frame_dt) + ".jpg"
-        
-        # Rename (or copy) file
-        old_path = os.path.join(frames_dir, fname)
-        new_path = os.path.join(output_dir, new_name)
-        # print(f'{old_path} -> {new_path}')
-        os.rename(old_path, new_path)
-    
+        new_path = day_dir / new_name
+        if new_path != fname:
+            fname.rename(new_path)
     print("Renaming complete.")
 
 def main():
-    """Process all videos to sample 1 frame per second."""
-    mp4_files = list(INPUT_DIR.glob("*.mp4"))
-    if not mp4_files:
-        print("No MP4 files found in", INPUT_DIR)
-        return
-
-    with Pool(processes=cpu_count()) as pool:
-        pool.map(process_video, mp4_files)
-
-    print("Done extracting 1 fps frames from all videos.")
+    """Extract 1 fps frames from DAY1..DAY7 in parallel, then rename to timestamp-based filenames."""
+    with Pool(processes=min(len(DAYS), cpu_count())) as pool:
+        pool.map(process_one_day, DAYS)
+    print("Done all days.")
 
 if __name__ == "__main__":
     main()

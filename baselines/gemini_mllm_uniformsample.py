@@ -14,7 +14,6 @@
 
 
 from baselines.baselines import *
-from paths import RESULTS_ROOT
 from google import genai
 from google.genai import types
 import glob

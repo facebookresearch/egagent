@@ -24,6 +24,8 @@ import json
 import re
 import sqlite3
 from typing import Optional, Tuple, List, Any
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paths import DB_ROOT, ENTITYGRAPH_DB_ROOT, TIMESTAMP_EPISODES_ROOT
 

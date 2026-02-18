@@ -23,30 +23,24 @@ import os
 import pandas as pd
 from pathlib import Path
 import pysrt
-import torch
 import base64
 import re
 import sqlite3
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tqdm import tqdm
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from transformers import AutoProcessor, AutoModel
 from typing import Optional, Any, List, Dict, Literal, Tuple
 
 from paths import (
     EGOLIFE_ROOT,
     VIDEO_MME_ROOT,
-    MODEL_ROOT,
     GOOGLE_GENAI_KEY_PATH,
     OPENAI_API_KEY_PATH,
     RESULTS_ROOT,
 )
-retriever = "siglip2-giant-opt-patch16-384"
-ckpt = f"{MODEL_ROOT}/{retriever}"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = AutoModel.from_pretrained(ckpt, device_map="auto").eval()
-processor = AutoProcessor.from_pretrained(ckpt)
 
 def flatten_list(xss):
     """Flatten a list of lists into a single list."""
@@ -176,57 +170,6 @@ def query_multimodal(system_prompt, query, image_paths, llm_name):
     out = llm_client.invoke(messages)
     return out
 
-def embed_frames_batch(images, device: torch.device, batch_size: int = 256) -> np.ndarray:
-    """Embed a batch of images using the embedding model.
-    
-    Args:
-        images: list of PIL Image objects
-        device: device to use for the embedding model
-        batch_size: batch size for the embedding model
-
-    Returns:
-        embeddings of the images
-    """
-    all_embeddings = []
-    num_batches = (len(images) + batch_size - 1) // batch_size  # ceiling division
-    for i in tqdm(range(0, len(images), batch_size), total=num_batches, desc="Embedding batches"):
-        batch = images[i:i+batch_size]
-        inputs = processor(images=batch, return_tensors="pt", padding="max_length").to(device)
-        with torch.no_grad():
-            outputs = model.vision_model(pixel_values=inputs.pixel_values)
-            embs = outputs.pooler_output.cpu().numpy()
-        all_embeddings.append(embs)
-    return np.vstack(all_embeddings)
-
-def embed_texts_batch(texts: list, device: torch.device, batch_size: int = 128) -> np.ndarray:
-    """Embed a batch of text using the embedding model.
-    
-    Args:
-        texts: list of text strings
-        device: device to use for the embedding model
-        batch_size: batch size for the embedding model
-
-    Returns:
-        embeddings of the text
-    """
-    all_embs = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i+batch_size]
-        inputs = processor(text=batch,
-                      padding="max_length",
-                      truncation=True,
-                      max_length=64,
-                      return_tensors="pt").to(device)
-        # Now inputs includes attention_mask, input_ids, etc.
-        with torch.no_grad():
-            outputs = model.text_model(
-                input_ids=inputs.input_ids,
-            )
-        # Take CLS token embedding
-        embs = outputs.pooler_output.cpu().numpy()
-        all_embs.append(embs)
-    return np.vstack(all_embs)
-    
 def get_file_contents(filename):
     """ Given a filename, return the contents of that file"""
     try:
@@ -561,7 +504,7 @@ def get_videomme_transcript_df(selected_video):
     if os.path.exists(transcript_file):
         return pd.read_csv(transcript_file)
         
-    path = f'/source/data/video-mme/subtitle/{selected_video}.srt'
+    path = f'{VIDEO_MME_ROOT}/subtitle/{selected_video}.srt'
     if not os.path.exists(path):
         return pd.DataFrame()
         

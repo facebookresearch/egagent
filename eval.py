@@ -14,71 +14,11 @@
 
 
 import json 
-from baselines.baselines import *
 from paths import RESULTS_ROOT
+from utils import load_egolife_qa_jake
 
 ## Load and clean up formatting of EgoLifeQA
 egolife_qa_jake = load_egolife_qa_jake()
-
-## Oracle and Previous X days of Transcripts Eval (see Appendix D.2)
-
-mllm = 'gpt-4.1' # gpt-4.1, gemini-2.5-pro
-captioner = 'gpt-4.1_summarized' # 'gpt-4.1_summarized', 'llava-video-7b_summarized', 'llava-video-7b', 'gpt-4.1'
-use_visual_oracle = False
-use_captions = False and (not use_visual_oracle)
-use_dt = True and (not use_captions)
-use_dt_oracle = True and use_dt # tells us which day to look at diarized transcript (DT)
-num_prev_days = (not use_dt_oracle) * (use_dt) * 3 # 3, 4
-remove_diarization = False and use_dt
-
-mcq_language = 'english' # 'chinese', 'english'
-transcripts_language = 'english' # 'chinese', 'english', 'chinese+english'
-max_frames= 50 # how many frames can MLLM ingest? e.g. GPT 4.1 and Gemini 2.5 Pro with Azure is 50 max
-use_entity_graph = False
-print()
-
-if use_captions:
-    print(f'Evaluating {mllm} with 1FPS captions before query time.')
-    results_root = RESULTS_ROOT / f'captions/mcq_{mcq_language}'
-    results_json = results_root / f'{mllm}_mcq-{mcq_language}_captioner-{captioner}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
-    
-elif not use_visual_oracle:
-    print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
-    results_root = (RESULTS_ROOT / f'diarized_transcripts/DT_oracle/mcq_{mcq_language}') if use_dt_oracle else (RESULTS_ROOT / f'diarized_transcripts/prevDTdays-{num_prev_days}/mcq_{mcq_language}')
-    results_json = results_root / f'{mllm}_DTlang-{transcripts_language}_removediarization-{remove_diarization}_egolife_results.json'
-    
-else:
-    print(f'Evaluating visual oracle with {max_frames} frames.')
-    if use_dt:
-        print(f'Evaluating DT day oracle with remove_diarization={remove_diarization}.') if use_dt_oracle else print(f'Evaluating using previous {num_prev_days} of DT with remove_diarization={remove_diarization}.')
-    results_root = RESULTS_ROOT / f'use{max_frames}frames_oracle'
-    results_json = results_root / f'{mllm}_mcq-{mcq_language}_useDT-{use_dt}_useDToracle-{use_dt_oracle}_prevDTdays-{num_prev_days}_removediarization-{remove_diarization}_egolife_results.json'
-
-print(results_json)
-if os.path.exists(results_json):
-    with open(results_json, 'r') as f:
-        final_prediction_list = json.load(f)
-else:
-    final_prediction_list = []
-
-correct_count = 0
-results_list = []
-
-for entry in final_prediction_list:
-    qid = entry['ID']
-    question_data = [e for e in egolife_qa_jake if e['ID'] == qid][0]
-
-    mcq_pred = extract_mcq_prediction(entry['content'].strip("```json").strip("response :\n"))
-    is_correct =  mcq_pred == question_data['answer']
-    correct_count += is_correct
-
-    question_data[f'{mllm}_acc'] = is_correct
-
-avg_total_tokens = np.average([e['usage_metadata']['total_tokens'] for e in final_prediction_list])
-print(f'Avg Total #Tokens Used: {avg_total_tokens // 1000 :.0f}K')
-print(f'Correct MCQ = {correct_count} / {len(final_prediction_list)} = {correct_count / len(final_prediction_list) * 100: .2f}%')
-print()
-
 
 ## Gemini 2.5 Pro Uniform Sampling (3000 frames + transcripts) eval
 print(f'Evaluating Gemini 2.5 Pro Uniform Sampling (3000 f + t)')

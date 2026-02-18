@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from run_agent_on_egolife import *
+from run_egagent_on_egolife import *
 
 TSCRIPT_SEARCH = 'llm'
 
@@ -120,6 +120,7 @@ def videomme_inference():
         query_time = {'date': 'DAY0', 'time': vidend} # assume query is always asked at the end of the video
         working_memory_init = ""
 
+        # wrap in try-except to handle API errors (e.g. rate limits)
         try:
             value = run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcripts, query_time, day_search_dict, selected_video, working_memory_init)
             

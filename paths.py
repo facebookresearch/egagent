@@ -24,9 +24,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 
 # Dataset roots
-EGOLIFE_ROOT = "path/to/EgoLife"  # path to EgoLife dataset root
-VIDEO_MME_ROOT = "path/to/VideoMME"  # path to VideoMME dataset root
-MODEL_ROOT = "path/to/models"  # path containing embedding model checkpoints
+EGOLIFE_ROOT = "path/to/EgoLife"  # path to EgoLife dataset root (https://huggingface.co/datasets/lmms-lab/EgoLife)
+VIDEO_MME_ROOT = "path/to/VideoMME"  # path to VideoMME dataset root (https://huggingface.co/datasets/lmms-lab/Video-MME)
+MODEL_ROOT = REPO_ROOT  # path containing multimodal embedding model
 
 # API key file locations
 GOOGLE_GENAI_KEY_PATH = "path/to/google-genai-key.txt"
@@ -40,14 +40,9 @@ VMME_ASR_DIR = "path/to/video-mme/subtitle"
 # Precomputed embeddings
 VMME_EMBS_PATH = "path/to/videomme_embeddings" # path to .npy files of embeddings of each video in Video-MME (Long)
 
-# Original EgoLife dataset directory used for sampling 1 fps frames in prepare_datasources/sample_egolife_1fps.py
-# Dataset available at https://huggingface.co/datasets/lmms-lab/EgoLife
-EGOLIFE_DATA_DIR = "path/to/EgoLife"
-
 # Outputs and derived data (repo-relative, do not change)
 RESULTS_ROOT = REPO_ROOT / "egolife_results"
 DB_ROOT = REPO_ROOT / "dbs"
-FRAMES_DB_ROOT = REPO_ROOT / "frames_db"
 ENTITYGRAPH_DB_ROOT = REPO_ROOT / "entitygraph_db"
 TIMESTAMP_EPISODES_ROOT = REPO_ROOT / "timestamp_episodes"
 PROCESSED_CAPTION_ROOT = REPO_ROOT / "captioning"

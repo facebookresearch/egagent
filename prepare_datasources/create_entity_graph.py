@@ -37,14 +37,22 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from paths import PROCESSED_CAPTION_ROOT, TIMESTAMP_EPISODES_ROOT, VMME_ASR_DIR
 from utils import get_vision_llm, get_egolife_diarized_transcripts, load_srt_hhmmss, load_srt_only_text, clean_html_tags, seconds_to_hhmmss
 
-dataset = 'videomme' # videomme, egolife
+dataset = 'egolife' # videomme, egolife
 
 def get_llm_worker(system_prompt, human_prompt, structured_llm_class, model):
     """
     Pass in custom llm BaseModel with structured output along with system and human prompts.
     Returns llm for use in graph nodes / edges.
     """
-    llm = get_vision_llm(model)
+    if model in ['gpt-4.1', 'gpt-4o']:
+        llm = get_vision_llm(model) # All workers currently use GPT 4.1
+    elif model in ['gpt-5', 'o3']:
+        llm = get_reasoning_llm(model)
+    elif model == 'gemini-2.5-pro':
+        llm = get_external_gemini_llm(model)
+    elif model == 'qwen-2.5-vl-7b':
+        llm = get_vLLM("localhost", "Qwen/Qwen2.5-VL-7B-Instruct")
+        
     llm_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -284,6 +292,7 @@ def add_start_and_end_times_to_videomme_captions(context_for_hour):
 async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt-4.1'):
     """Extract the entity graph for one day of EgoLife, hour by hour. Then add timestamps to the relationships."""
     diarized_transcripts_dict = get_egolife_diarized_transcripts()
+    print(diarized_transcripts_dict.keys())
     dt_for_day = diarized_transcripts_dict[f'DAY{day}'].split("\n")
     episodes = [dt_for_day[i] for i in range(len(dt_for_day)) if i%2!=0][:-1] # each hour
     rel_timestamper = get_rel_timestamper_llm(model='gpt-4.1', config=config)
@@ -401,11 +410,12 @@ async def main(day):
     if dataset == 'egolife':
         captioner='gpt-4.1'
         config = f'fused_dt_and_{captioner}captions'
+        assert day in [1, 2, 3, 4, 5, 6, 7], "EgoLife day must be between 1 and 7"
         await extract_entity_graph_egolife_day(config, day, captioner)
     else:
         captioner='llava-video-7b'
         config = f'fused_dt_and_{captioner}captions'
-        df_videomme = json.loads(pd.read_parquet("/source/data/video-mme/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
+        df_videomme = json.loads(pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
         df_videomme_long_vIDs = np.unique([e['videoID'] for e in df_videomme if e['duration'] == 'long'])
         batch_offset = 50 # 6 batches of 50 each = 300 long videos
         start_idx = int(sys.argv[1])
@@ -416,7 +426,7 @@ async def main(day):
             except Exception as e:
                 print(e)
 
-day = sys.argv[1]
+day = int(sys.argv[1])
 
 if __name__ == "__main__":
     asyncio.run(main(day))

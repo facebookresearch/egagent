@@ -20,6 +20,13 @@ conda activate egagent
 ## Configure Paths
 Update dataset, model, and API key locations in `paths.py` before running the scripts.
 
+## Set up Multimodal Embedding Model
+Download the multimodal embedding model used by EGAgent's visual search tool. We use SigLIP 2 by default, but this can be replaced by the latest state-of-the-art image-text encoder. This repository is the default path to download the embedding model checkpoints, this can be changed to another path in `paths.py`.
+```
+git lfs install
+git clone https://huggingface.co/google/siglip2-giant-opt-patch16-384
+```
+
 ## Create Data Sources for Tool Querying
 We create data sources for the visual search tool and entity graph in `prepare_datasources/`. The audio transcripts are queried on the fly and do not require an explicit data source.
 

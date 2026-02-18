@@ -15,10 +15,9 @@
 
 import ast
 from collections import defaultdict
-from create_entity_graph import get_egolife_diarized_transcripts
+from create_entity_graph import get_egolife_diarized_transcripts, get_llm_worker
 from datetime import datetime, timedelta, time as dtime
 import json
-from langgraph_agent import get_llm_worker
 import numpy as np
 import os
 import pandas as pd 
@@ -28,8 +27,7 @@ import re
 import sys
 import time
 from utils import get_egolife_transcript_df, get_videomme_transcript_df, timeformatter, query_text_only
-
-from paths import PROCESSED_CAPTION_ROOT, CAPTION_ROOT
+from paths import PROCESSED_CAPTION_ROOT, RAW_CAPTION_ROOT, VIDEO_MME_ROOT
 
 dataset = 'egolife' # videomme, egolife
 mllm = 'gpt-4.1' # multimodal llm used to fuse captions and transcripts
@@ -290,7 +288,7 @@ def get_overlapping_transcript_videomme(df, start_t, end_t):
 
 def fuse_captions_and_dt_videomme(captions_file):
     """Fuse captions and diarized transcripts for VideoMME."""
-    df_videomme = json.loads(pd.read_parquet("/source/data/video-mme/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
+    df_videomme = json.loads(pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
     df_videomme_long_vIDs = np.unique([e['videoID'] for e in df_videomme if e['duration'] == 'long'])
     
     batch_offset = 50 # 6 batches of 50 each = 300 long videos
@@ -307,7 +305,7 @@ def fuse_captions_and_dt_videomme(captions_file):
     for selected_video in df_videomme_long_vIDs[start_idx:start_idx+batch_offset]:
         fused_outfile = PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner.lower()}_captions/gpt-4.1_{selected_video}.json'
 
-        filename = f'/source/data/video-mme/data/{selected_video}.mp4'
+        filename = f'{VIDEO_MME_ROOT}/data/{selected_video}.mp4'
         all_windows_for_vID = list([e for e in videomme_captions if list(e.keys())[0] == filename][0].values())[0]
         try:
             df_transcript_all_days = get_videomme_transcript_df(selected_video)

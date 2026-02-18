@@ -22,9 +22,13 @@ from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph, START
 
 import logging
+import os
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
-from paths import DB_ROOT
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from retrieval_model import device, embed_texts_batch
 from utils import *
 
 dataset = "egolife" # videomme, egolife

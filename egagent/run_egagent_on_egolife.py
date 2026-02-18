@@ -13,9 +13,9 @@
 # limitations under the License.
 
 
+import argparse
 import bm25s
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from paths import DB_ROOT, RESULTS_ROOT
 from langgraph_agent import *
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -136,7 +136,6 @@ def search_and_analyze_transcripts_bm25(state):
     logger.debug("RELEVANT CONTEXT: ",  working_memory)
     return {"working_memory": working_memory}
 
-
     
 def search_and_analyze_frames(state):
     """
@@ -233,8 +232,6 @@ def search_and_analyze_frames(state):
     return {"working_memory": working_memory}
 
 
-
-    
 def run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init):
     inputs = {
         "plan": ["empty"],
@@ -263,7 +260,24 @@ def egolife_inference():
     with open(f"{dataset_root}/EgoLife/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
         egolife_qa_jake = json.load(f)
     df_egolife = pd.DataFrame(egolife_qa_jake)
-    tscript_dict = get_egolife_diarized_transcripts(remove_diarization=False)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--qid", default="338", help="EgoLifeQA question ID (string). Default: 338")
+    parser.add_argument(
+        "--tscript-search",
+        default="llm",
+        choices=["llm", "bm25"],
+        help="Transcript search backend used inside the agent graph.",
+    )
+    parser.add_argument(
+        "--remove-diarization",
+        action="store_true",
+        help="If set, remove diarization tags from transcripts.",
+    )
+    args = parser.parse_args()
+
+    # get transcripts
+    tscript_dict = get_egolife_diarized_transcripts(remove_diarization=args.remove_diarization)
 
     workflow = StateGraph(GraphState)
     
@@ -279,7 +293,7 @@ def egolife_inference():
     workflow.add_edge(START, "planner_node")
     workflow.add_edge("planner_node", "search_and_analyze_frames")
     workflow.add_edge("search_and_analyze_frames", "search_entity_graph")
-    if TSCRIPT_SEARCH == 'llm':
+    if args.tscript_search == 'llm':
         workflow.add_edge("search_entity_graph", "retrieve_transcripts")
         workflow.add_conditional_edges(
             "retrieve_transcripts",
@@ -289,7 +303,7 @@ def egolife_inference():
                 "incomplete": "planner_node",
             },
         )
-    elif TSCRIPT_SEARCH == 'bm25':
+    elif args.tscript_search == 'bm25':
         workflow.add_edge("search_entity_graph", "search_and_analyze_transcripts_bm25")
         workflow.add_conditional_edges(
             "search_and_analyze_transcripts_bm25",
@@ -330,24 +344,25 @@ def egolife_inference():
         day_search_dict = get_egolife_daysearchdict(query_time)
         working_memory_init = "The long video is taken from the first-person perspective of Jake. "
 
-        # try:
-        value = run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init)
-        
-        results['ID'] = selected_qid
-        results['question'] = vqa_question
-        results['options'] = options
-        results['answer'] = answer
-        results['plan'] = value["plan"]
-        results['working_memory'] = value['working_memory']
-        results['mcq_prediction'] = value["answer"].mcq_prediction
-        results['justification'] = value["answer"].justification
-        results['total_tokens'] = value["total_tokens"]
-        final_prediction_list.append(results)
-        completed_ids.add(selected_qid)
-        with open(results_json, 'w') as f:
-            json.dump(final_prediction_list, f, indent=4)
-        # except Exception as e:
-        #     print(e)
+        # wrap in try-except to handle API errors (e.g. rate limits)
+        try:
+            value = run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init)
+            
+            results['ID'] = selected_qid
+            results['question'] = vqa_question
+            results['options'] = options
+            results['answer'] = answer
+            results['plan'] = value["plan"]
+            results['working_memory'] = value['working_memory']
+            results['mcq_prediction'] = value["answer"].mcq_prediction
+            results['justification'] = value["answer"].justification
+            results['total_tokens'] = value["total_tokens"]
+            final_prediction_list.append(results)
+            completed_ids.add(selected_qid)
+            with open(results_json, 'w') as f:
+                json.dump(final_prediction_list, f, indent=4)
+        except Exception as e:
+            print(e)
 
 if __name__ == "__main__":
     egolife_inference()
