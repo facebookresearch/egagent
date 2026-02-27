@@ -22,8 +22,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logging.getLogger('bm25s').setLevel(logging.WARNING)
 
-TSCRIPT_SEARCH = 'llm' # 'llm', 'bm25'
-
 def get_egolife_daysearchdict(query_time):
     """
     Create dictionary of start and end times of all days in EgoLife (Jake). This is used by the retriever tool when deciding time filters to query.
@@ -257,7 +255,7 @@ def run_agentic_inference(app, vqa_question, options, transcripts, query_time, d
 
 
 def egolife_inference():
-    with open(f"{dataset_root}/EgoLife/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
+    with open(f"{dataset_root}/EgoLifeQA/EgoLifeQA_A1_JAKE.json", "r", encoding="utf-8") as f:
         egolife_qa_jake = json.load(f)
     df_egolife = pd.DataFrame(egolife_qa_jake)
 

@@ -40,6 +40,7 @@ from paths import (
     GOOGLE_GENAI_KEY_PATH,
     OPENAI_API_KEY_PATH,
     RESULTS_ROOT,
+    DB_ROOT
 )
 
 def flatten_list(xss):

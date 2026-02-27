@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import argparse
 import ast
 from collections import defaultdict
 from create_entity_graph import get_egolife_diarized_transcripts, get_llm_worker
@@ -27,10 +28,7 @@ import re
 import sys
 import time
 from utils import get_egolife_transcript_df, get_videomme_transcript_df, timeformatter, query_text_only
-from paths import PROCESSED_CAPTION_ROOT, RAW_CAPTION_ROOT, VIDEO_MME_ROOT
-
-dataset = 'egolife' # videomme, egolife
-mllm = 'gpt-4.1' # multimodal llm used to fuse captions and transcripts
+from paths import CAPTION_ROOT, VIDEO_MME_ROOT
 
 def parse_time(t):
     """Parse a time string into a datetime object."""
@@ -184,10 +182,19 @@ def get_caption_dt_fuser_llm(model='gpt-4.1'):
     
     return get_llm_worker(fuser_system, fuser_human, FusedCaption, model)
 
-def summarize_captions(captions_file):
+def summarize_captions(
+    captions_file: str,
+    day: int,
+    captioner: str,
+    mllm: str,
+    chunk_num_minutes: int = 5,
+) -> None:
     """Summarize captions for EgoLife at chunk intervals (default 5 minutes)."""
-    chunk_num_minutes = 5 # summarize caption chunks of this duration (min)
-    results_json = PROCESSED_CAPTION_ROOT / f'summarized_captions/day{day}_captioner-{captioner}_summarized-{mllm}_{chunk_num_minutes}min-intervals.json'
+    # summarize caption chunks of this duration (minutes)
+    results_json = CAPTION_ROOT / (
+        f'summarized_captions/day{day}_captioner-{captioner}_'
+        f'summarized-{mllm}_{chunk_num_minutes}min-intervals.json'
+    )
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:
             final_caption_list = json.load(f)
@@ -195,7 +202,7 @@ def summarize_captions(captions_file):
         final_caption_list = []
     
     caption_by_timechunk = get_chunkwise_caps_for_day(captioner, captions_file, chunk_num_minutes)
-    cap_summarizer = get_caption_summary_llm(model = mllm)
+    cap_summarizer = get_caption_summary_llm(model=mllm)
     
     for interval, cap_text in caption_by_timechunk.items():
         # print(f"\n===== Interval starting {interval} =====\n")
@@ -209,9 +216,14 @@ def summarize_captions(captions_file):
         with open(results_json, 'w') as f:
             json.dump(final_caption_list, f, indent=4)
 
-def fuse_captions_and_dt_egolife(captions_file):
-    """Fuse captions and diarized transcripts for EgoLife."""
-    chunk_num_minutes = 60 # get every hour of captions
+def fuse_captions_and_dt_egolife(
+    captions_file: str,
+    day: int,
+    captioner: str,
+    mllm: str,
+    chunk_num_minutes: int = 60,
+) -> None:
+    """Fuse captions and diarized transcripts for EgoLife at chunk intervals (default 1 hour)."""
     fuser_llm = get_caption_dt_fuser_llm(model=mllm)
     
     with open(captions_file, "r") as f:
@@ -222,7 +234,10 @@ def fuse_captions_and_dt_egolife(captions_file):
     dt_for_day = diarized_transcripts_dict[f'DAY{day}'].split("\n")
     episodes = [dt_for_day[i] for i in range(len(dt_for_day)) if i%2!=0][:-1] # each hour
     
-    results_json = PROCESSED_CAPTION_ROOT / f'summarized_captions/day{day}_captioner-{captioner}_summarized-{mllm}_{chunk_num_minutes}min-intervals.json'
+    results_json = CAPTION_ROOT / (
+        f'summarized_captions/day{day}_captioner-{captioner}_'
+        f'summarized-{mllm}_{chunk_num_minutes}min-intervals.json'
+    )
     if os.path.exists(results_json):
         with open(results_json, 'r') as f:
             final_caption_list = json.load(f)
@@ -236,7 +251,7 @@ def fuse_captions_and_dt_egolife(captions_file):
         captions_selected = [e for e in egolife_captions if list(e.keys())[0][-12:-10] in [hour]]
         dt_for_hour = ast.literal_eval(episodes[hour_idx-1])
         dt_split_by_30sec = merge_captions_with_transcripts(captions_selected, dt_for_hour)
-        fused_outfile = PROCESSED_CAPTION_ROOT / f'fused_dt_and_captions/{captioner}_day{day}_hour{hour_idx}.json'
+        fused_outfile = CAPTION_ROOT / f'fused_dt_and_captions/{captioner}_day{day}_hour{hour_idx}.json'
         
         if os.path.exists(fused_outfile):
             with open(fused_outfile, "r") as f:
@@ -286,24 +301,32 @@ def get_overlapping_transcript_videomme(df, start_t, end_t):
     overlaps = df[(df["end_sec"] > start_t) & (df["start_sec"] < end_t)]
     return " ".join(overlaps["transcript_english"].tolist())
 
-def fuse_captions_and_dt_videomme(captions_file):
+def fuse_captions_and_dt_videomme(
+    captions_file: str,
+    model_name: str,
+    start_idx: int = 0,
+    batch_offset: int = 50,
+) -> None:
     """Fuse captions and diarized transcripts for VideoMME."""
-    df_videomme = json.loads(pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
+    df_videomme = json.loads(
+        pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(
+            orient='records'
+        )
+    )
     df_videomme_long_vIDs = np.unique([e['videoID'] for e in df_videomme if e['duration'] == 'long'])
     
-    batch_offset = 50 # 6 batches of 50 each = 300 long videos
-    start_idx = int(sys.argv[1])
+    # 6 batches of 50 each = 300 long videos by default
     end_idx = start_idx + batch_offset
     
     with open(captions_file, "r") as f:
         videomme_captions = json.load(f)
     
-    fuser_llm = get_caption_dt_fuser_llm(model='gpt-4.1')
+    fuser_llm = get_caption_dt_fuser_llm(model=model_name)
     window_duration = 64 # each window captions 64 seconds of video
 
-    print(f'Generating for videos {start_idx} through {start_idx+batch_offset}')
-    for selected_video in df_videomme_long_vIDs[start_idx:start_idx+batch_offset]:
-        fused_outfile = PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner.lower()}_captions/gpt-4.1_{selected_video}.json'
+    print(f'Generating for videos {start_idx} through {start_idx + batch_offset}')
+    for selected_video in df_videomme_long_vIDs[start_idx:start_idx + batch_offset]:
+        fused_outfile = CAPTION_ROOT / f'fused_dt_and_{captioner.lower()}_captions/{model_name}_{selected_video}.json'
 
         filename = f'{VIDEO_MME_ROOT}/data/{selected_video}.mp4'
         all_windows_for_vID = list([e for e in videomme_captions if list(e.keys())[0] == filename][0].values())[0]
@@ -343,13 +366,70 @@ def fuse_captions_and_dt_videomme(captions_file):
                 print(e)
         print(f'Finished Generating {fused_outfile} in {time.time() - start: .2f} sec\n')
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fuse audio transcripts and captions for entity graph extraction."
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["egolife", "videomme"],
+        default="egolife",
+        help="Which dataset to process (default: egolife).",
+    )
+    parser.add_argument(
+        "--mllm",
+        type=str,
+        default="gpt-4.1",
+        help="Multimodal LLM used for summarization/fusion (e.g., gpt-4.1).",
+    )
+    parser.add_argument(
+        "--day",
+        type=int,
+        default=1,
+        help="EgoLife day index (1-7). Ignored when dataset is 'videomme'.",
+    )
+    parser.add_argument(
+        "--batch-start",
+        type=int,
+        default=0,
+        help="For VideoMME: starting index (0-based) of the long-video batch to process.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="For VideoMME: number of long videos to process starting from --batch-start (default: 50).",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    day = sys.argv[1]
-    if dataset == 'egolife':
-        captioner = 'gpt-4.1'
-        captions_file = f'{RAW_CAPTION_ROOT}/{captioner}_captions/egolife-jake/{captioner}_day{day}_1fps-captions.json'
-        fuse_captions_and_dt_egolife(captions_file)
-    elif dataset == 'videomme':
-        captioner = 'LLaVA-Video-7B' # LLaVA-Video-7B
-        captions_file = f'{RAW_CAPTION_ROOT}/{captioner.lower()}_captions/videomme-long/videomme-long_{captioner}_slidingwindow.json'
-        fuse_captions_and_dt_videomme(captions_file)
+    args = parse_args()
+
+    if args.dataset == "egolife":
+        day = args.day
+        captioner = "gpt-4.1"  # caption generator used to produce raw captions
+        captions_file = (
+            f"{CAPTION_ROOT}/{captioner}_captions/egolife-jake/"
+            f"{captioner}_day{day}_1fps-captions.json"
+        )
+        fuse_captions_and_dt_egolife(
+            captions_file=captions_file,
+            day=day,
+            captioner=captioner,
+            mllm=args.mllm,
+        )
+
+    elif args.dataset == "videomme":
+        captioner = "LLaVA-Video-7B"  # caption generator used for Video-MME (Long)
+        captions_file = (
+            f"{CAPTION_ROOT}/{captioner.lower()}_captions/videomme-long/"
+            f"videomme-long_{captioner}_slidingwindow.json"
+        )
+        fuse_captions_and_dt_videomme(
+            captions_file,
+            model_name=args.mllm,
+            start_idx=args.batch_start,
+            batch_offset=args.batch_size,
+        )

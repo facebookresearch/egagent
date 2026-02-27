@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import argparse
 import ast
 import asyncio
 from datetime import datetime, timedelta
@@ -34,10 +35,8 @@ from typing import Literal, List, Dict, Any, Optional
 # Allow running this script from inside prepare_datasources/
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from paths import PROCESSED_CAPTION_ROOT, TIMESTAMP_EPISODES_ROOT, VMME_ASR_DIR
-from utils import get_vision_llm, get_egolife_diarized_transcripts, load_srt_hhmmss, load_srt_only_text, clean_html_tags, seconds_to_hhmmss
-
-dataset = 'egolife' # videomme, egolife
+from paths import CAPTION_ROOT, TIMESTAMP_EPISODES_ROOT, VMME_ASR_DIR, VIDEO_MME_ROOT
+from utils import get_egolife_diarized_transcripts, load_srt_hhmmss, load_srt_only_text, clean_html_tags, seconds_to_hhmmss, get_vision_llm, get_vLLM, get_reasoning_llm, get_external_gemini_llm
 
 def get_llm_worker(system_prompt, human_prompt, structured_llm_class, model):
     """
@@ -45,7 +44,7 @@ def get_llm_worker(system_prompt, human_prompt, structured_llm_class, model):
     Returns llm for use in graph nodes / edges.
     """
     if model in ['gpt-4.1', 'gpt-4o']:
-        llm = get_vision_llm(model) # All workers currently use GPT 4.1
+        llm = get_vision_llm(model) # All workers use GPT 4.1 by default
     elif model in ['gpt-5', 'o3']:
         llm = get_reasoning_llm(model)
     elif model == 'gemini-2.5-pro':
@@ -292,7 +291,6 @@ def add_start_and_end_times_to_videomme_captions(context_for_hour):
 async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt-4.1'):
     """Extract the entity graph for one day of EgoLife, hour by hour. Then add timestamps to the relationships."""
     diarized_transcripts_dict = get_egolife_diarized_transcripts()
-    print(diarized_transcripts_dict.keys())
     dt_for_day = diarized_transcripts_dict[f'DAY{day}'].split("\n")
     episodes = [dt_for_day[i] for i in range(len(dt_for_day)) if i%2!=0][:-1] # each hour
     rel_timestamper = get_rel_timestamper_llm(model='gpt-4.1', config=config)
@@ -304,7 +302,7 @@ async def extract_entity_graph_egolife_day(config, day:int = 1, captioner = 'gpt
             continue
 
         if config == f'fused_dt_and_{captioner}captions':
-            with open(PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner}captions/{captioner}_day{day}_hour{hour+1}.json', "r") as f:
+            with open(CAPTION_ROOT / f'fused_dt_and_{captioner}captions/{captioner}_day{day}_hour{hour+1}.json', "r") as f:
                 context_for_hour = add_start_and_end_times_to_egolife_captions(json.load(f))
         elif config == 'diarized_transcripts_only':
             context_for_hour = episodes[hour]
@@ -361,7 +359,7 @@ async def extract_entity_graph_videomme(config, selected_video, captioner):
     ofilename = TIMESTAMP_EPISODES_ROOT / f'{config}/videomme/{selected_video}.json'
     rel_outfile = TIMESTAMP_EPISODES_ROOT / f'{config}/videomme/relationships/{selected_video}_relationships.json'
     if config == f'fused_dt_and_{captioner}captions':
-        with open(PROCESSED_CAPTION_ROOT / f'fused_dt_and_{captioner}captions/gpt-4.1_{selected_video}.json', "r") as f:
+        with open(CAPTION_ROOT / f'fused_dt_and_{captioner}captions/gpt-4.1_{selected_video}.json', "r") as f:
             context_for_hour = add_start_and_end_times_to_videomme_captions(json.load(f))
     elif config == 'diarized_transcripts_only':
         context_for_hour = subtitles_only_text
@@ -406,19 +404,22 @@ async def extract_entity_graph_videomme(config, selected_video, captioner):
         print(f'DONE: saved {ofilename}\n')
         
     
-async def main(day):
-    if dataset == 'egolife':
-        captioner='gpt-4.1'
-        config = f'fused_dt_and_{captioner}captions'
-        assert day in [1, 2, 3, 4, 5, 6, 7], "EgoLife day must be between 1 and 7"
-        await extract_entity_graph_egolife_day(config, day, captioner)
+async def main(args) -> None:
+    if args.dataset == "egolife":
+        captioner = "gpt-4.1"
+        config = f"fused_dt_and_{captioner}captions"
+        assert args.day in [1, 2, 3, 4, 5, 6, 7], "EgoLife day must be between 1 and 7"
+        await extract_entity_graph_egolife_day(config, args.day, captioner)
     else:
-        captioner='llava-video-7b'
-        config = f'fused_dt_and_{captioner}captions'
+        captioner = "llava-video-7b"
+        config = f"fused_dt_and_{captioner}captions"
         df_videomme = json.loads(pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
-        df_videomme_long_vIDs = np.unique([e['videoID'] for e in df_videomme if e['duration'] == 'long'])
-        batch_offset = 50 # 6 batches of 50 each = 300 long videos
-        start_idx = int(sys.argv[1])
+        df_videomme_long_vIDs = np.unique(
+            [e["videoID"] for e in df_videomme if e["duration"] == "long"]
+        )
+        # 6 batches of 50 each = 300 long videos by default
+        start_idx = args.batch_start
+        batch_offset = args.batch_size
         end_idx = start_idx + batch_offset
         for selected_video in df_videomme_long_vIDs[start_idx:end_idx]:
             try:
@@ -426,7 +427,40 @@ async def main(day):
             except Exception as e:
                 print(e)
 
-day = int(sys.argv[1])
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Create entity graphs from fused captions + audio transcripts."
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["egolife", "videomme"],
+        default="egolife",
+        help="Which dataset to process (default: egolife).",
+    )
+    parser.add_argument(
+        "--day",
+        type=int,
+        default=1,
+        help="EgoLife day index (1–7). Used only when --dataset egolife.",
+    )
+    parser.add_argument(
+        "--batch-start",
+        type=int,
+        default=0,
+        help="For VideoMME (Long): 0-based start index of the long-video batch to process.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="For VideoMME (Long): number of long videos to process starting from --batch-start "
+        "(default: 50).",
+    )
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
-    asyncio.run(main(day))
+    cli_args = parse_args()
+    asyncio.run(main(cli_args))

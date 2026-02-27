@@ -31,14 +31,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from retrieval_model import device, embed_texts_batch
 from utils import *
 
-dataset = "egolife" # videomme, egolife
-agent_backbone = 'gpt-4.1' # gpt-4.1 (default), gemini-2.5-pro, gpt-4o, qwen-2.5-vl-7b
-dataset_root = EGOLIFE_ROOT if dataset == 'egolife' else VIDEO_MME_ROOT # path to EgoLife and VideoMME datasets (HuggingFace)
+dataset = "videomme" # videomme, egolife
+agent_backbone = 'gemini-2.5-pro' # gpt-4.1 (default), gemini-2.5-pro, gpt-4o, qwen-2.5-vl-7b
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-frames_dir = f'{dataset_root}/image_1fps_A1_JAKE' if dataset == 'egolife' else f'{dataset_root}/video-mme/video_1fps'
-asr_dir = f'{dataset_root}/EgoLifeCap/Transcript/A1_JAKE/' if dataset == 'egolife' else f'{dataset_root}/video-mme/subtitle'
+dataset_root = EGOLIFE_ROOT if dataset == 'egolife' else VIDEO_MME_ROOT # path to EgoLife and VideoMME datasets (HuggingFace)
+frames_dir = f'{dataset_root}/image_1fps_A1_JAKE' if dataset == 'egolife' else f'{dataset_root}/video_1fps'
+asr_dir = f'{dataset_root}/EgoLifeCap/Transcript/A1_JAKE/' if dataset == 'egolife' else f'{dataset_root}/subtitle'
 
 MAX_PLANNING_STEPS = 5
 MAX_FRAMES_FOR_MLLM = 50 # GPT 4.1

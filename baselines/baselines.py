@@ -160,9 +160,9 @@ def load_egolife_captions_for_day(day, query_day, query_time, captioner = 'gpt-4
     """Load captions for a day, truncated at the query time for the query day."""
 
     if captioner in ['gpt-4.1_summarized', 'llava-video-7b_summarized']:
-        captions_file = f'{EGOLIFE_CAPTION_ROOT}/summarized_captions/day{day}_captioner-{captioner}-gpt-4.1_5min-intervals.json'
+        captions_file = f'{CAPTION_ROOT}/summarized_captions/day{day}_captioner-{captioner}-gpt-4.1_5min-intervals.json'
     else:
-        captions_file = f'{EGOLIFE_CAPTION_ROOT}/{captioner}_captions/egolife-jake/{captioner}_day{day}_1fps-captions.json'
+        captions_file = f'{CAPTION_ROOT}/{captioner}_captions/egolife-jake/{captioner}_day{day}_1fps-captions.json'
     with open(captions_file, "r") as f:
         egolife_captions = json.load(f)
 

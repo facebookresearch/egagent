@@ -1,4 +1,4 @@
-# [Agentic Very Long Video Understanding]()
+# [Agentic Very Long Video Understanding](https://arxiv.org/abs/2601.18157)
 _Aniket Rege, Arka Sadhu, Yuliang Li, Kejie Li, Ramya Korlakai Vinayak, Yuning Chai, Yong Jae Lee, Hyo Jin Kim_
 
 <p align="center">
@@ -35,6 +35,9 @@ We provide code for EGAgent inference on EgoLife and Video-MME in `egagent/`.
 
 ## Baseline Inference
 We provide code to evaluate other baselines on very long video understanding, i.e. multimodal LLMs that uniformly sample frames and transcripts in `baselines/`.
+
+## Ablations
+We provide code to compute retrieval recall of EGAgent tools as well as to generate plots from our paper in `ablations/`.
 
 ## Citation
 If you find this project useful in your research, please consider citing:

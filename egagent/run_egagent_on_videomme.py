@@ -15,11 +15,10 @@
 
 from run_egagent_on_egolife import *
 
-TSCRIPT_SEARCH = 'llm'
-
 def run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcripts, query_time, day_search_dict, selected_video, working_memory_init):
     inputs = {
         "plan": ["empty"],
+        "selected_video": selected_video,
         "working_memory": working_memory_init,
         "current_task": "",
         "previous_tasks": ["empty"],
@@ -44,6 +43,15 @@ def run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcri
     
 
 def videomme_inference():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tscript-search",
+        default="llm",
+        choices=["llm", "bm25"],
+        help="Transcript search backend used inside the agent graph.",
+    )
+    args = parser.parse_args()
+
     workflow = StateGraph(GraphState)
     
     # Define the nodes
@@ -61,7 +69,7 @@ def videomme_inference():
     workflow.add_edge("planner_node", "retrieve_frames_sql")
     workflow.add_edge("retrieve_frames_sql", "analyze_retrieved_frames")
     workflow.add_edge("analyze_retrieved_frames", "search_entity_graph")
-    if TSCRIPT_SEARCH == 'llm':
+    if args.tscript_search == "llm":
         workflow.add_edge("search_entity_graph", "retrieve_transcripts")
         workflow.add_conditional_edges(
             "retrieve_transcripts",
@@ -71,7 +79,7 @@ def videomme_inference():
                 "incomplete": "planner_node",
             },
         )
-    elif TSCRIPT_SEARCH == 'bm25':
+    elif args.tscript_search == "bm25":
         workflow.add_edge("search_entity_graph", "search_and_analyze_transcripts_bm25")
         workflow.add_conditional_edges(
             "search_and_analyze_transcripts_bm25",
@@ -86,7 +94,7 @@ def videomme_inference():
 
 
     # Inference over full Video-MME (long) dataset
-    df_videomme = json.loads(pd.read_parquet("lmms-lab/Video-MME/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
+    df_videomme = json.loads(pd.read_parquet(f"{VIDEO_MME_ROOT}/videomme/test-00000-of-00001.parquet").to_json(orient='records'))
     df_videomme_long = [e for e in df_videomme if e['duration'] == 'long']
     
     total_questions = len(df_videomme_long)
@@ -121,24 +129,24 @@ def videomme_inference():
         working_memory_init = ""
 
         # wrap in try-except to handle API errors (e.g. rate limits)
-        try:
-            value = run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcripts, query_time, day_search_dict, selected_video, working_memory_init)
-            
-            results['ID'] = selected_qid
-            results['question'] = vqa_question
-            results['options'] = options
-            results['answer'] = answer
-            results['plan'] = value["plan"]
-            results['working_memory'] = value['working_memory']
-            results['mcq_prediction'] = value["answer"].mcq_prediction
-            results['justification'] = value["answer"].justification
-            results['total_tokens'] = value["total_tokens"]
-            final_prediction_list.append(results)
-            completed_ids.add(selected_qid)
-            with open(results_json, 'w') as f:
-                json.dump(final_prediction_list, f, indent=4)
-        except Exception as e:
-            print(e)
+        # try:
+        value = run_agentic_inference(app, vqa_question, options, vidstart, vidend, transcripts, query_time, day_search_dict, selected_video, working_memory_init)
+        
+        results['ID'] = selected_qid
+        results['question'] = vqa_question
+        results['options'] = options
+        results['answer'] = answer
+        results['plan'] = value["plan"]
+        results['working_memory'] = value['working_memory']
+        results['mcq_prediction'] = value["answer"].mcq_prediction
+        results['justification'] = value["answer"].justification
+        results['total_tokens'] = value["total_tokens"]
+        final_prediction_list.append(results)
+        completed_ids.add(selected_qid)
+        with open(results_json, 'w') as f:
+            json.dump(final_prediction_list, f, indent=4)
+        # except Exception as e:
+        #     print(e)
 
 if __name__ == "__main__":
     videomme_inference()

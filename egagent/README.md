@@ -19,7 +19,7 @@ Optional flags:
 
 To run EGAgent on VideoMME-long (900 MCQ pairs):
 ```
-python egagent/run_egagent_on_videomme.py
+python egagent/run_egagent_on_videomme.py --tscript-search llm
 ```
 
 ## [Optional] Batch + Merge results
