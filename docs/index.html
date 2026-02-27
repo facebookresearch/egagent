@@ -1,0 +1,293 @@
+<!-- Project page template adapted from https://github.com/facebookresearch/LaViLa/ -->
+<!DOCTYPE HTML>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="StyleSheet" href="assets/style.css" type="text/css" media="all">
+
+    <title>EGAgent</title>
+    <script src="https://kit.fontawesome.com/c444c87c0c.js" crossorigin="anonymous"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.2/iconify-icon.min.js"></script>
+
+    <style>
+        table.bordered,
+        th.bordered,
+        td.bordered {
+            border: 1px solid black;
+            border-collapse: collapse;
+            padding: 15px;
+        }
+
+        .center {
+            margin-left: auto;
+            margin-right: auto;
+        }
+    </style>
+
+    <!-- bibliographic tags -->
+    <meta name="citation_title" content="Agentic Very Long Video Understanding" />
+    <meta name="citation_author" content="Rege, Aniket" />
+    <meta name="citation_author" content="Sadhu, Arka" />
+    <meta name="citation_author" content="Li, Yuliang" />
+    <meta name="citation_author" content="Li, Kejie" />
+    <meta name="citation_author" content="Vinayak, Ramya Korlakai" />
+    <meta name="citation_author" content="Chai, Yuning" />
+    <meta name="citation_author" content="Lee, Yong Jae" />
+    <meta name="citation_author" content="Kim, Hyo Jin" />
+    <meta name="citation_publication_date" content="2026" />
+    <meta name="citation_conference_title" content="arXiv" />
+    <meta name="citation_pdf_url" content="https://arxiv.org/abs/2601.18157" />
+
+    <style type="text/css">
+        #primarycontent h1 {
+            font-variant: small-caps;
+        }
+
+        #primarycontent h3 {}
+
+        #primarycontent p {
+            text-align: center;
+        }
+
+        #primarycontent {
+            text-align: justify;
+        }
+
+        #primarycontent p {
+            text-align: justify;
+        }
+
+        #primarycontent p iframe {
+            text-align: center;
+        }
+
+        #avatar {
+            border-radius: 50%;
+        }
+    </style>
+    <script type="text/javascript">
+        function togglevis(elid) {
+            el = document.getElementById(elid);
+            aelid = elid + "a";
+            ael = document.getElementById(aelid);
+            if (el.style.display == 'none') {
+                el.style.display = 'inline-table';
+                ael.innerHTML = "[Hide BibTeX]";
+            } else {
+                el.style.display = 'none';
+                ael.innerHTML = "[Show BibTeX]";
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="primarycontent">
+        <h1 align="center" itemprop="name"><strong>
+                Agentic Very Long Video Understanding
+            </strong></h1>
+        <table id="authors" style="margin:auto;">
+            <tr>
+                <td></td>
+                <td><a href="https://aniketrege.github.io/" target="_blank">Aniket Rege<sup>1,2</sup></a></td>
+                <td><a href="https://theshadow29.github.io/" target="_blank">Arka Sadhu<sup>1</sup></a></td>
+                <td><a href="https://oi02lyl.github.io/" target="_blank">Yuliang Li<sup>1</sup></a></td>
+                <td><a href="https://likojack.github.io/kejieli/" target="_blank">Kejie Li<sup>1</sup></a></td>
+                <td><a href="https://ramyakv.github.io/" target="_blank">Ramya Korlakai Vinayak<sup>2</sup></a></td>
+                <td><a href="https://www.linkedin.com/in/chaiyuning/" target="_blank">Yuning Chai<sup>1</sup></a></td>
+                <td><a href="https://pages.cs.wisc.edu/~yongjaelee/" target="_blank">Yong Jae Lee<sup>2</sup></a></td>
+                <td><a href="https://www.cs.unc.edu/~hyojin/" target="_blank">Hyo Jin Kim<sup>1</sup></a></td>
+            </tr>
+        </table>
+
+        <table id="affliates" style="margin:auto;">
+            <tr>
+                <td></td>
+                <td>
+                    <a href="https://tech.facebook.com/reality-labs/" target="_blank"></a><sup>1</sup>Reality Labs Research at Meta
+                </td>
+                <td>
+                    <a href="https://cs.wisc.edu/" target="_blank"></a><sup>2</sup>University of Wisconsin–Madison</a>
+                </td>
+            </tr>
+        </table>
+
+        <table id="navigate" style="margin:auto;">
+            <tr>
+                <td>
+                    <iconify-icon icon="bi:file-earmark-pdf-fill"></iconify-icon>
+                    <a href="https://arxiv.org/abs/2601.18157" target="_blank"> arXiv</a>
+                </td>
+                <td>
+                    <iconify-icon icon="octicon:mark-github-16"></iconify-icon>
+                    <a href="https://github.com/facebookresearch/egagent" target="_blank"> GitHub</a>
+                </td>
+                <td>
+                    <iconify-icon icon="bxs:quote-left"></iconify-icon>
+                    <a href="assets/bib.txt">bibtex</a>
+                </td>
+            </tr>
+        </table>
+
+        <h3>Overview</h3>
+        <table class="results" align="center">
+            <tr>
+                <td align="center">
+                    <!-- <img src="assets/egagent_pipeline.gif" width="90%" alt="EGAgent pipeline overview" /> -->
+                    <video autoplay loop muted playsinline width="90%">
+                        <source src="assets/egagent_teaser.mp4" type="video/mp4">
+                        EGAgent teaser
+                      </video>
+                </td>
+            </tr>
+            <tr>
+                <td class="credits" align="justify">
+                    We propose <font style="font-variant: small-caps">EGAgent</font>, an agentic framework for very long video understanding powered by temporally-annotated entity scene graphs, which allow for precise
+                    temporal localization of events and interactions bewteen entities across extremely long horizons (e.g. a week-long video, ~50 hours). Here we show an example of multi-hop cross-modal reasoning on the <a href="https://github.com/EvolvingLMMs-Lab/EgoLife" target="_blank">EgoLife</a> dataset.
+                </td>
+            </tr>
+        </table>
+
+        <h3>The Entity Scene Graph</h3>
+        <table class="results" align="center">
+            <tr>
+                <td align="center">
+                    <img src="assets/eg_creation.png" width="80%" alt="Entity Graph Creation" />
+                </td>
+            </tr>
+            <tr>
+                <td class="credits" align="justify">
+                    We use an LLM, denoted as <i>𝓕</i>, to extract an entity graph from text documents <i>𝓓</i> that represent a very long video, <em>i.e.</em>, audio transcripts
+                    <i>𝓐𝓣</i> and scene descriptions and locations extracted from sampled image frames <i>𝓥</i>. Each graph relationship <i>r</i> connects a source vertex
+                    <i>v</i><sub>s</sub> and target vertex <i>v</i><sub>t</sub> between time (<i>t</i><sub>start</sub>, <i>t</i><sub>end</sub>). Each vertex has an entity
+                    type τ(<i>v</i>) and the raw text document <i>d</i><sup>*</sup> used to extract the relationship.
+                </td>
+            </tr>
+        </table>
+
+        <h3>Main Results</h3>
+        <table id="results" style="margin:auto; width:100%; max-width:100%; table-layout:fixed;">
+            <tr>
+                <td align="justify" style="padding-top: 10px; padding-bottom: 10px; padding-right: 20px; width:50%;">
+                    <img src="assets/egolifeqa_categorywise_accuracy.png" style="width: 100%; height: auto;" alt="EgoLifeQA category-wise accuracy" /><br />
+                    We compare our EGAgent to Gemini 2.5 Pro and EgoButler across each question category in EgoLifeQA. Our approach significantly outperforms baselines on RelationMap (+20.8%) and TaskMaster (+22.2%), 
+                    where entity understanding and complex reasoning is required to provide a correct answer.
+                </td>
+                <td align="justify" style="padding-top: 10px; padding-bottom: 10px; padding-left: 20px; width:50%;">
+                    <img src="assets/egolife_recall_curves.png" style="width: 100%; height: auto;" alt="EgoLife recall@W curves" /><br />
+                    Recall@windowsize (recall@<i>W</i>) of agentic approaches on EgoLifeQA with respect to ground-truth timestamps provided by the dataset across search tools.
+                    Using the entity graph (EG+F+T) significantly improves EGAgent overall recall compared to using only frames and audio transcripts (F+T) across all window sizes.
+                </td>
+            </tr>
+        </table>
+
+        <h3>Pipeline Walkthrough</h3>
+        <table class="results" align="center">
+            <tr>
+                <td align="center">
+                    <!-- <img src="assets/egagent_pipeline.gif" width="90%" alt="EGAgent pipeline overview" /> -->
+                    <video autoplay loop muted playsinline width="80%">
+                        <source src="assets/egagent_pipeline.mp4" type="video/mp4">
+                        EGAgent teaser
+                      </video>
+                </td>
+            </tr>
+            <tr>
+                <td class="credits" align="justify">
+                    EGAgent consists of a planning agent equipped for multi-hop cross-modal reasoning across long-horizon videosby querying three tools: a visual search tool, an audio transcript search tool, and an entity graph search tool. The planning agent
+                    decomposes a question <i>𝓠</i> into sub-tasks and routes each sub-task to the most relevant tool for information retrieval. The retrieved information is analyzed by an analyzer tool and appended to the working memory <i>𝓜</i>. Once the planning agent
+                    has collected evidence to answer all sub-tasks, it sends its working memory to the VQA agent to generate an answer <i>𝓐(𝓠, 𝓜)</i>.
+                    
+                </td>
+            </tr>
+        </table>
+
+        <h3>People</h3>
+        <table id="people" style="margin:auto; width:100%; max-width:100%; table-layout:fixed;">
+            <tr>
+                <td>
+                    <img src="assets/authors/aniket.png" /><br />
+                    <a href="https://aniketrege.github.io/" target="_blank">Aniket Rege
+                </td>
+                <td>
+                    <img src="assets/authors/arka.jpeg" /><br />
+                    <a href="https://theshadow29.github.io/" target="_blank">Arka Sadhu</a>
+                </td>
+                <td>
+                    <img src="assets/authors/yuliang.jpeg" /><br />
+                    <a href="https://oi02lyl.github.io/" target="_blank">Yuliang Li</a>
+                </td>
+                <td>
+                    <img src="assets/authors/kejie.jpeg" /><br />
+                    <a href="https://likojack.github.io/kejieli/" target="_blank">Kejie Li</a>
+                </td>
+                <td>
+                    <img src="assets/authors/ramya.png" /><br />
+                    <a href="https://ramyakv.github.io/" target="_blank">Ramya Korlakai Vinayak</a>
+                </td>
+                <td>
+                    <img src="assets/authors/chai.jpeg" /><br />
+                    <a href="https://www.linkedin.com/in/chaiyuning/" target="_blank">Yuning Chai</a>
+                </td>
+                <td>
+                    <img src="assets/authors/yongjae.jpg" /><br />
+                    <a href="https://pages.cs.wisc.edu/~yongjaelee/" target="_blank">Yong Jae Lee</a>
+                </td>
+                <td>
+                    <img src="assets/authors/hyojin.jpeg" /><br />
+                    <a href="https://www.cs.unc.edu/~hyojin/" target="_blank">Hyo Jin Kim</a>
+                </td>
+            </tr>
+        </table>
+        
+        <h3>Paper</h3>
+        <table id="paper" class="center">
+            <tr>
+                <td>
+                    <!-- Add assets/paper-screenshot.png (paper first page) or remove this cell -->
+                    <a href="https://arxiv.org/abs/2601.18157"><img style="box-shadow: 5px 5px 2px #888888; margin: 10px"
+                            src="assets/egagent_preview.jpg" width="150px" alt="Paper thumbnail" onerror="this.style.display='none'" /></a>
+                </td>
+                <td></td>
+                <td>
+                    A. Rege, A. Sadhu, Y. Li, K. Li, R. K. Vinayak, Y. Chai, Y. J. Lee, H. J. Kim<br />
+                    <a href="https://arxiv.org/abs/2601.18157">Agentic Very Long Video Understanding</a><br />
+                    [<a href="https://arxiv.org/abs/2601.18157">arXiv</a>]
+                    [<a href="https://github.com/facebookresearch/egagent">code</a>]
+                    [<a href="javascript:togglevis('rege2025agentic')" id="bibtex">bibtex</a>]
+                </td>
+            </tr>
+        </table>
+
+        <table class="bibtex" style="display:none" id="rege2025agentic">
+            <tr>
+                <td>
+                    <pre>
+                    @misc{rege2025agentic,
+                    title     = {Agentic Very Long Video Understanding},
+                    author    = {Rege, Aniket and Sadhu, Arka and Li, Yuliang and Li, Kejie and Vinayak, Ramya Korlakai and Chai, Yuning and Lee, Yong Jae and Kim, Hyo Jin},
+                    month     = {January},
+                    year      = {2026},
+                    eprint    = {2601.18157},
+                    archivePrefix = {arXiv},
+                    primaryClass  = {cs.CV},
+                    url       = {https://arxiv.org/abs/2601.18157},
+                    }
+                    </pre>
+                </td>
+            </tr>
+        </table>
+
+        <h3>Acknowledgement</h3>
+        <table class="results" align="center">
+            <tr>
+                <td class="credits" align="justify">
+                    This website template is adapted from <a href="https://github.com/facebookresearch/LaViLa/tree/gh-pages" target="_blank">LaViLa</a>. All the images from the figures shown are from from the <a href="https://github.com/EvolvingLMMs-Lab/EgoLife" target="_blank">EgoLife</a> dataset.
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>
