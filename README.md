@@ -1,4 +1,8 @@
 # [Agentic Very Long Video Understanding](https://arxiv.org/abs/2601.18157)
+
+[[📂 Project Page]](https://github.com/facebookresearch/egagent)
+[[📝 Paper]](https://arxiv.org/abs/2601.18157) [[📚 Bibtex]](#citation)
+
 _Aniket Rege, Arka Sadhu, Yuliang Li, Kejie Li, Ramya Korlakai Vinayak, Yuning Chai, Yong Jae Lee, Hyo Jin Kim_
 
 <p align="center">
