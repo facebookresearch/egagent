@@ -1,4 +1,4 @@
-# [Agentic Very Long Video Understanding](https://arxiv.org/abs/2601.18157)
+# [Agentic Very Long Video Understanding (ACL 2026)](https://arxiv.org/abs/2601.18157)
 
 [[📂 Project Page]](https://facebookresearch.github.io/egagent/)
 [[📝 Paper]](https://arxiv.org/abs/2601.18157) [[📚 Bibtex]](#citation)
@@ -46,10 +46,9 @@ We provide code to compute retrieval recall of EGAgent tools as well as to gener
 ## Citation
 If you find this project useful in your research, please consider citing:
 ```
-@misc{rege2025agentic,
+@misc{rege2026agentic,
   title={Agentic Very Long Video Understanding},
   author={Rege, Aniket and Sadhu, Arka and Li, Yuliang and Li, Kejie and Vinayak, Ramya Korlakai and Chai, Yuning and Lee, Yong Jae and Kim, Hyo Jin},
-  month={January},
   year={2026},
   eprint={2601.18157},
   archivePrefix={arXiv},
