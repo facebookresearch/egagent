@@ -470,7 +470,7 @@ def get_egolife_transcript_df(participants: List[str] = ['A1_JAKE']) -> pd.DataF
     Returns:
         DataFrame of diarized transcripts for all days for the specified participant
     """
-    transcript_file = f'transcript_csv/diarized_transcripts_all_days_JAKE.csv'
+    transcript_file = f'prepare_datasources/diarized_transcripts_all_days_JAKE.csv'
     if os.path.exists(transcript_file):
         return pd.read_csv(transcript_file)
         
@@ -501,7 +501,7 @@ def get_videomme_transcript_df(selected_video):
     Returns:
         DataFrame of transcripts for the specified video
     """
-    transcript_file = f'transcript_csv/videomme/transcript-{selected_video}.csv'
+    transcript_file = f'prepare_datasources/videomme/transcript-{selected_video}.csv'
     if os.path.exists(transcript_file):
         return pd.read_csv(transcript_file)
         

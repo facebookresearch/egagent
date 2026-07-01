@@ -31,7 +31,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from retrieval_model import device, embed_texts_batch
 from utils import *
 
-dataset = "videomme" # videomme, egolife
+dataset = "egolife" # videomme, egolife
 agent_backbone = 'gemini-2.5-pro' # gpt-4.1 (default), gemini-2.5-pro, gpt-4o, qwen-2.5-vl-7b
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -134,15 +134,30 @@ elif agent_backbone in ['gpt-5', 'o3']:
 """
 ### Planner
 
+class PlanStep(BaseModel):
+    task: str = Field(description="Concise sub-task of overall plan.")
+    tools: List[Literal["visual", "audio", "eg"]] = Field(
+        description="Search tools for this step: visual, audio, and/or eg. Use only what is needed."
+    )
+
+
 class MultiHopPlan(BaseModel):
     """Come up with a multi-step plan of how to answer a question about a long video."""
 
-    plan: List[str] = Field(
-        description="List of steps of the plan"
+    steps: List[PlanStep] = Field(
+        description="Ordered plan steps, each with search tool selection"
     )
 
-planner_system = f"""You are an expert at answer questions about long videos. These questions may require multi-hop reasoning. Your job is to come 
-up with a multi-step plan of all possible information that may be needed to answer the question. Each step of your plan will be routed to three search tools. The first search tool looks at transcripts with timestamps, the second looks at image frames sampled at 1 FPS, and the third looks at an entity scene graph extracted from the long video. All search tools will search for context relevant to the plan step. Keep each step concisely framed, and do not add compiling information as the final step, as this will be done automatically. You may use up to {MAX_PLANNING_STEPS} steps, but use as few as necessary to answer the question. """
+planner_system = f"""You are an expert at answering questions about long videos. These questions may require multi-hop reasoning. Your job is to come up with a multi-step plan of the information needed to answer the question.
+
+For each step, specify which search tool(s) to use from:
+- visual: image frames sampled at 1 FPS
+- audio: audio transcripts with timestamps (slow and expensive, but high quality)
+- eg: entity scene graph SQL search (fast and cheap, but may not be able to answer the question; prefer for entity/relationship queries)
+
+Use only the tools required for each step. If you are unsure, use all tools you think may be relevant.
+
+Keep each step concisely framed, and do not add compiling information as the final step, as this will be done automatically. You may use up to {MAX_PLANNING_STEPS} steps, but use as few as necessary to answer the question. """
 if dataset == 'egolife':
     planner_system += 'Note that the question and all video frames are from the first-person (egocentric) perspective of Jake. Any references to "me" or "I" thus refer to Jake.'
 planner_human = "Question: {question}, Candidates: {candidates}"
@@ -436,14 +451,39 @@ transcript_analyzer = get_llm_worker(tscripts_analyzer_system, tscripts_analyzer
 
 ### Grade Multi-step plan completion
 class GradePlanCompletion(BaseModel):
-    """Binary score to assess if all steps of the plan have been addressed."""
+    """Binary score for whether retrieval can stop early."""
 
     binary_score: str = Field(
-        description="Answer addresses the question, 'yes' or 'no'"
+        description="'yes' only if working memory already contains everything needed to answer the multiple-choice question; otherwise 'no'"
     )
 
-plangrader_system = """You are a grader assessing whether all steps of a plan about video question answering have been completed, given the previously completed steps. \n Give a binary score 'yes' or 'no'. Yes' means that the context covers all aspects of the plan."""
-plangrader_human = "Original Steps of Plan: \n {plan} \n Completed Steps: {previous_tasks} \n\n Context History: {working_memory}. If the number of completed steps so far is less than the number of original steps, answer yes only if you are very confident that you don't need any more context to answer the question."
+plangrader_system = """You are a conservative grader deciding whether an agentic video QA system can stop retrieving and proceed to final answer generation.
+
+Give a binary score 'yes' or 'no'.
+
+Answer 'yes' ONLY if the working memory already contains ALL information needed to confidently select the correct option among the four candidates. The evidence must directly support answering the full question — not just a sub-task or partial clue.
+
+Answer 'no' if ANY of the following hold:
+- Any remaining plan step might still add necessary context
+- Working memory is missing names, times, entities, or relationships required by the question or options
+- You could not confidently pick one of A/B/C/D from the working memory alone
+- Evidence is indirect, incomplete, or only addresses part of the question
+
+When in doubt, answer 'no'. It is safer to continue executing the remaining plan steps and search tools than to exit early."""
+
+plangrader_human = """Question: {question}
+Four Options: {candidates}
+
+Original plan steps:
+{plan}
+
+Completed plan steps so far:
+{previous_tasks}
+
+Working memory (retrieved context so far):
+{working_memory}
+
+If the number of completed steps is less than the number of original plan steps, answer 'yes' ONLY if you are confident the working memory already has everything needed to answer the full question and discriminate among all four options. Otherwise answer 'no'."""
 
 plan_grader = get_llm_worker(plangrader_system, plangrader_human, GradePlanCompletion, agent_backbone)
 
@@ -481,25 +521,28 @@ generate_finalanswer = get_llm_worker(mcqprediction_system, mcqprediction_human,
 """
 
 
-class GraphState(TypedDict):
+class VeryLongVideoQA(TypedDict):
     """
-    Represents the state of our graph.
+    State for EGAgent inference (VeryLongVideoQA graph).
 
     Attributes:
         question: multiple-choice question
         candidates: four options for MCQ
         selected_video: name of selected video
-        vidstart: in hhmmss
-        vidend: in hhmmss
+        vidstart: in hhmmss (VideoMME visual search bounds)
+        vidend: in hhmmss (VideoMME visual search bounds)
         start_t: when to begin tool search
         end_t: when to end tool search
-        day_search_dict: start and end times of all days
+        day_search_dict: start and end times of all days (EgoLife)
         query_time: the time (and day) the query is asked, if provided
         audio_transcripts: full audio transcripts of long video
         plan: decompose the question into multi-step plan
+        plan_steps: plan steps with per-step tool selection
         working_memory: accumulate cross-modal evidence
         current_task: current planner task being executed
         previous_tasks: planner tasks previously completed
+        remaining_tools_this_step: tools queued for the current plan step
+        next_route: routing dispatch key (visual, audio, eg, step_done)
         retriever_queries: queries to search for relevant video frames
         relevant_frame_paths: list of retrieved relevant video frames
         answer: VQA agent predicted answer to MCQ
@@ -517,9 +560,12 @@ class GraphState(TypedDict):
     query_time: str
     audio_transcripts: List[str]
     plan: List[str]
+    plan_steps: List[dict]
     working_memory: str
     current_task: str
     previous_tasks: List[str]
+    remaining_tools_this_step: List[str]
+    next_route: str
     retriever_queries: List[str]
     relevant_frame_paths: List[str]
     answer: str
@@ -540,19 +586,26 @@ def planner_node(state):
     Returns:
         state (dict): New key added to state, plan, that contains multi-step plan
     """
-    plan = state["plan"]
-    num_completed_steps = len(state["previous_tasks"]) - 1 
-    # Only come up with plan on first invocation
-    if num_completed_steps == 0:
+    plan_steps = state.get("plan_steps") or []
+    plan = state.get("plan") or ["empty"]
+    num_completed_steps = len(state["previous_tasks"]) - 1
+
+    if num_completed_steps == 0 and (not plan_steps or plan == ["empty"]):
         logger.debug("---MULTI STEP PLAN---")
         cb = UsageMetadataCallbackHandler()
         resp = planner.invoke({"question": state["question"], "candidates": state["candidates"]}, config={"callbacks": [cb]})
         state['total_tokens'].append({'planner' : list(cb.usage_metadata.values())[0]['total_tokens']})
-        plan = resp.plan
-        for i,p in enumerate(plan):
-            logger.debug(f'{i+1}. {p}')
-    state["current_task"] = str(plan[num_completed_steps])
-    return {"plan": plan, "current_task": plan[num_completed_steps]}
+        plan_steps = [step.model_dump() for step in resp.steps]
+        plan = [s["task"] for s in plan_steps]
+        for i, s in enumerate(plan_steps):
+            logger.debug(f'{i+1}. {s["task"]} -> tools={s["tools"]}')
+
+    if num_completed_steps >= len(plan_steps):
+        return {"plan": plan, "plan_steps": plan_steps, "current_task": state.get("current_task", ""), "remaining_tools_this_step": []}
+
+    step = plan_steps[num_completed_steps]
+    tools = list(step["tools"]) if step.get("tools") else ["eg"]
+    return {"plan": plan, "plan_steps": plan_steps, "current_task": step["task"], "remaining_tools_this_step": tools}
 
 
 def get_retrieval_params_sql(state):
@@ -571,7 +624,7 @@ def get_retrieval_params_sql(state):
     cb = UsageMetadataCallbackHandler()
     retrieval_params = frame_retrieval_with_timestamps_init.invoke({"question": state["current_task"], "working_memory": state["working_memory"], "vidstart": state["vidstart"], "vidend": state["vidend"]}, config={"callbacks": [cb]})
     state['total_tokens'].append({'get_retrieval_params_sql' : list(cb.usage_metadata.values())[0]['total_tokens']})
-    logger.debug(state["current_task"], state["working_memory"], state["vidstart"], state["vidend"])
+    logger.debug("%s %s vidstart=%s vidend=%s", state["current_task"], state["working_memory"], state["vidstart"], state["vidend"])
     return {"retriever_queries": retrieval_params.text_queries, "start_t": retrieval_params.start_t, "end_t": retrieval_params.end_t}
 
 
@@ -593,7 +646,7 @@ def retrieve_frames_sql(state):
     text_queries = retrieval_params.text_queries
     start_t = retrieval_params.start_t # hardcode to 0 to remove time filtering
     end_t = retrieval_params.end_t # hardcode to 2359 to remove time filtering
-    logger.debug(text_queries, start_t, end_t)
+    logger.debug("text_queries=%s start_t=%s end_t=%s", text_queries, start_t, end_t)
 
     retrieved_image_paths = frame_retriever_sql.invoke({"selected_video": state["selected_video"], "queries": text_queries, "topk": 50, "start_t": start_t, "end_t": end_t})
 
@@ -618,9 +671,8 @@ def retrieve_transcripts(state):
     cb = UsageMetadataCallbackHandler()
     relevant_transcripts = tscript_retriever_oneshot.invoke({"current_task": current_task, "working_memory": state["working_memory"], "audio_transcripts": audio_transcripts}, config={"callbacks": [cb]})
     state['total_tokens'].append({'retrieve_transcripts_llm' : list(cb.usage_metadata.values())[0]['total_tokens']})
-    state["previous_tasks"].append(current_task)
     working_memory += 'Transcript_Search: ' + relevant_transcripts.relevance + '\n'
-    logger.debug("RELEVANT CONTEXT: ",  working_memory)
+    logger.debug("RELEVANT CONTEXT: %s", working_memory)
     return {"working_memory": working_memory}
 
 
@@ -676,35 +728,29 @@ def generate_answer(state):
 """
 
 
-def route_plan(state):
-    """
-    Route sub-task to entity graph, visual, or transcript search.
+def route_next_tool_node(state):
+    """Dispatch the next selected tool for the current plan step (paper: route_plan)."""
+    remaining = list(state.get("remaining_tools_this_step") or [])
+    if not remaining:
+        return {"next_route": "step_done"}
+    tool = remaining[0]
+    logger.debug(f"---ROUTE TO {tool.upper()}--- step={state['current_task']}")
+    return {"next_route": tool, "remaining_tools_this_step": remaining[1:]}
 
-    Args:
-        state (dict): The current graph state
 
-    Returns:
-        str: Next node to call
-    """
+def route_from_dispatch(state):
+    """Dispatch the next selected tool for the current plan step."""
+    return state.get("next_route", "step_done")
 
-    logger.debug("---ROUTE PLAN---")
-    working_memory = state["working_memory"]
-    cb = UsageMetadataCallbackHandler()
-    source = question_router.invoke({"plan": state["plan"], "previous_tasks": state["previous_tasks"], "working_memory": working_memory}, config={"callbacks": [cb]})
-    if source.datasource == "visual":
-        logger.debug("\t---ROUTE PLAN STEP TO VISUAL SEARCH---")
-        logger.debug("Plan step: ", state["current_task"])
-        return "visual"
-    elif source.datasource == "audio":
-        logger.debug("\t---ROUTE PLAN STEP TO AUDIO SEARCH---")
-        logger.debug("Plan step: ", state["current_task"])
-        return "audio"
-    elif source.datasource == "eg":
-        logger.debug("\t---ROUTE PLAN STEP TO ENTITY GRAPH SEARCH---")
-        logger.debug("Plan step: ", state["current_task"])
-        return "eg"
+def mark_step_complete_node(state):
+    """Mark the current plan step complete after all its tools have run."""
+    previous_tasks = list(state["previous_tasks"])
+    current_task = str(state["current_task"])
+    if not previous_tasks or previous_tasks[-1] != current_task:
+        previous_tasks.append(current_task)
+    return {"previous_tasks": previous_tasks}
 
-        
+
 def grade_plan_completion(state):
     """
     Decide if all steps of plan are complete.
@@ -720,16 +766,22 @@ def grade_plan_completion(state):
     num_completed_steps = len(state["previous_tasks"]) - 1
     logger.debug(f"{num_completed_steps} STEPS COMPLETED")
     cb = UsageMetadataCallbackHandler()
-    source = plan_grader.invoke({"plan": state["plan"], "previous_tasks": state["previous_tasks"], "working_memory": state["working_memory"]}, config={"callbacks": [cb]})
+    source = plan_grader.invoke({
+        "question": state["question"],
+        "candidates": state["candidates"],
+        "plan": state["plan"],
+        "previous_tasks": state["previous_tasks"],
+        "working_memory": state["working_memory"],
+    }, config={"callbacks": [cb]})
     state['total_tokens'].append({'plan_grader' : list(cb.usage_metadata.values())[0]['total_tokens']})
 
     completion = source.binary_score
-    if num_completed_steps == len(state["plan"]):
-        logger.debug("---ALL STEPS OF PLAN ATTEMPTED BUT NOT ADDRESSED---")
+    if num_completed_steps >= len(state["plan"]):
+        logger.debug("---ALL STEPS OF PLAN ATTEMPTED---")
         return "complete"
     elif completion == "yes":
-        logger.debug("---ALL STEPS OF PLAN ADDRESSED---")
-        return "incomplete"
-    elif completion == "no":
+        logger.debug("---EARLY EXIT: PLAN ADDRESSED---")
+        return "complete"
+    else:
         logger.debug("---ALL STEPS OF PLAN NOT YET ADDRESSED---")
         return "incomplete"

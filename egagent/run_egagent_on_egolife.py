@@ -77,7 +77,7 @@ def search_entity_graph(state):
         conn_eg = sqlite3.connect(DB_ROOT / f"{dataset}/dtonly_concatwith_fused_dt_and_llava-video-7bcaptions/videomme_{selected_video}.db")
     cursor = conn_eg.cursor()
     
-    logger.debug('CURRENT STEP:', current_task)
+    logger.debug('CURRENT STEP: %s', current_task)
     for q in entity_graph_params.sql_queries:
         logger.debug(q)
         try: # just ignore if llm doesn't output valid sql query
@@ -89,7 +89,7 @@ def search_entity_graph(state):
             pass
     eg_query_results = get_eg_query_results(results) if len(results) > 0 else "NONE"
     working_memory += 'EntityGraph_Search: ' + str(eg_query_results) + '\n'
-    logger.debug("RELEVANT CONTEXT: ",  working_memory)
+    logger.debug("RELEVANT CONTEXT: %s", working_memory)
     return {"working_memory": working_memory}
 
 
@@ -117,8 +117,10 @@ def search_and_analyze_transcripts_bm25(state):
         eng_transcripts_to_search, df_final = get_egolife_transcripts_for_qid(state["query_time"])
     elif dataset == 'videomme':
         eng_transcripts_to_search, df_final = get_videomme_transcripts_for_vid(state['selected_video'])
-        
-    corpus = eng_transcripts_to_search 
+
+    df_final = df_final[df_final['transcript_english'].notna()].copy()
+    df_final['transcript_english'] = df_final['transcript_english'].astype(str)
+    corpus = df_final['transcript_english'].tolist()
     dt_retriever = bm25s.BM25() # pass corpus=corpus arg to return docs instead of doc IDs
     dt_retriever.index(bm25s.tokenize(corpus)) # takes ~400ms to tokenize and index for day 7
     results, scores = dt_retriever.retrieve(bm25s.tokenize(text_queries), k=100)
@@ -130,8 +132,7 @@ def search_and_analyze_transcripts_bm25(state):
     state['total_tokens'].append({'transcript_analyzer' : list(cb.usage_metadata.values())[0]['total_tokens']})    
 
     working_memory += 'Transcript_Search: ' + analysis.relevance + '\n'
-    state["previous_tasks"].append(state["current_task"])
-    logger.debug("RELEVANT CONTEXT: ",  working_memory)
+    logger.debug("RELEVANT CONTEXT: %s", working_memory)
     return {"working_memory": working_memory}
 
     
@@ -230,12 +231,15 @@ def search_and_analyze_frames(state):
     return {"working_memory": working_memory}
 
 
-def run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init):
+def run_agentic_inference(app, vqa_question, options, transcripts, query_time, day_search_dict, working_memory_init, verbose=False):
     inputs = {
         "plan": ["empty"],
+        "plan_steps": [],
         "working_memory": working_memory_init,
         "current_task": "",
         "previous_tasks": ["empty"],
+        "remaining_tools_this_step": [],
+        "next_route": "",
         "query_time": query_time,
         "day_search_dict": day_search_dict,
         "question": vqa_question, 
@@ -245,12 +249,17 @@ def run_agentic_inference(app, vqa_question, options, transcripts, query_time, d
     }
     config = RunnableConfig(recursion_limit=100)
     
+    trace_keys = (
+        "plan", "plan_steps", "current_task", "previous_tasks",
+        "remaining_tools_this_step", "next_route", "working_memory",
+    )
     for output in app.stream(inputs, config):
         for key, value in output.items():
-            # Node
-            pass
+            if verbose:
+                snapshot = {k: value.get(k) for k in trace_keys if k in value}
+                print(f"\n{'=' * 60}\nNODE: {key}\n{'=' * 60}")
+                print(json.dumps(snapshot, indent=2, default=str))
     
-    # Final generation
     return value
 
 
@@ -271,49 +280,92 @@ def egolife_inference():
         action="store_true",
         help="If set, remove diarization tags from transcripts.",
     )
+    parser.add_argument(
+        "--example-id",
+        type=int,
+        default=None,
+        help="Run a single EgoLifeQA example by ID and print the agent trace.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print state snapshots after each graph node (use with --example-id).",
+    )
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # get transcripts
     tscript_dict = get_egolife_diarized_transcripts(remove_diarization=args.remove_diarization)
 
-    workflow = StateGraph(GraphState)
+    workflow = StateGraph(VeryLongVideoQA)
     
-    # Define agent graph nodes
-    workflow.add_node("planner_node", planner_node)
-    workflow.add_node("search_entity_graph", search_entity_graph)
-    workflow.add_node("search_and_analyze_frames", search_and_analyze_frames)
-    workflow.add_node("search_and_analyze_transcripts_bm25", search_and_analyze_transcripts_bm25)
-    workflow.add_node("retrieve_transcripts", retrieve_transcripts) # LLM search + analyze
+    # Define agent graph nodes (node names match paper Appendix E)
+    workflow.add_node("planner", planner_node)
+    workflow.add_node("route_plan", route_next_tool_node)
+    workflow.add_node("mark_step_complete", mark_step_complete_node)
+    workflow.add_node("search_eg", search_entity_graph)
+    workflow.add_node("search_visual", search_and_analyze_frames)
     workflow.add_node("generate_answer", generate_answer)
 
-    # Build agent graph
-    workflow.add_edge(START, "planner_node")
-    workflow.add_edge("planner_node", "search_and_analyze_frames")
-    workflow.add_edge("search_and_analyze_frames", "search_entity_graph")
     if args.tscript_search == 'llm':
-        workflow.add_edge("search_entity_graph", "retrieve_transcripts")
-        workflow.add_conditional_edges(
-            "retrieve_transcripts",
-            grade_plan_completion,
-            {
-                "complete": "generate_answer",
-                "incomplete": "planner_node",
-            },
-        )
-    elif args.tscript_search == 'bm25':
-        workflow.add_edge("search_entity_graph", "search_and_analyze_transcripts_bm25")
-        workflow.add_conditional_edges(
-            "search_and_analyze_transcripts_bm25",
-            grade_plan_completion,
-            {
-                "complete": "generate_answer",
-                "incomplete": "planner_node",
-            },
-        )
+        workflow.add_node("search_transcripts", retrieve_transcripts)
+    else:
+        workflow.add_node("search_transcripts", search_and_analyze_transcripts_bm25)
+
+    # Build agent graph: planner picks tools per step, then early-exit grading
+    workflow.add_edge(START, "planner")
+    workflow.add_edge("planner", "route_plan")
+    workflow.add_conditional_edges(
+        "route_plan",
+        route_from_dispatch,
+        {
+            "visual": "search_visual",
+            "eg": "search_eg",
+            "audio": "search_transcripts",
+            "step_done": "mark_step_complete",
+        },
+    )
+    workflow.add_edge("search_visual", "route_plan")
+    workflow.add_edge("search_eg", "route_plan")
+    workflow.add_edge("search_transcripts", "route_plan")
+    workflow.add_conditional_edges(
+        "mark_step_complete",
+        grade_plan_completion,
+        {
+            "complete": "generate_answer",
+            "incomplete": "planner",
+        },
+    )
     workflow.add_edge("generate_answer", END)
     app = workflow.compile()
 
-    
+    if args.example_id is not None:
+        example = next((q for q in egolife_qa_jake if str(q["ID"]) == str(args.example_id)), None)
+        if example is None:
+            raise ValueError(f"No EgoLifeQA example with ID {args.example_id}")
+        vqa_question = example["question"]
+        options = f"""A.{example['choice_a']}\nB.{example['choice_b']}\nC.{example['choice_c']}\nD.{example['choice_d']}"""
+        query_time = example["query_time"]
+        transcripts = tscript_dict[query_time["date"]]
+        day_search_dict = get_egolife_daysearchdict(query_time)
+        working_memory_init = "The long video is taken from the first-person perspective of Jake. "
+        print(f"Running example ID {args.example_id}: {vqa_question}")
+        print(f"Ground truth: {example['answer']}")
+        value = run_agentic_inference(
+            app, vqa_question, options, transcripts, query_time, day_search_dict,
+            working_memory_init, verbose=args.verbose,
+        )
+        print("\n" + "=" * 60)
+        print("FINAL")
+        print("=" * 60)
+        print(f"Plan: {value['plan']}")
+        print(f"Prediction: {value['answer'].mcq_prediction}")
+        print(f"Justification: {value['answer'].justification}")
+        print(f"Total tokens: {value['total_tokens']}")
+        return
+
     # Inference over the full EgoLifeQA dataset
     total_questions = len(egolife_qa_jake)
     results_json = RESULTS_ROOT / 'egagent_egolifeqa_results_all.json'
