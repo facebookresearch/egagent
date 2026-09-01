@@ -46,13 +46,12 @@ We provide code to compute retrieval recall of EGAgent tools as well as to gener
 ## Citation
 If you find this project useful in your research, please consider citing:
 ```
-@misc{rege2026agentic,
-  title={Agentic Very Long Video Understanding},
+@inproceedings{rege2026agentic,
+  title={Agentic very long video understanding},
   author={Rege, Aniket and Sadhu, Arka and Li, Yuliang and Li, Kejie and Vinayak, Ramya Korlakai and Chai, Yuning and Lee, Yong Jae and Kim, Hyo Jin},
-  year={2026},
-  eprint={2601.18157},
-  archivePrefix={arXiv},
-  url={https://arxiv.org/abs/2601.18157},
+  booktitle={Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={46575--46602},
+  year={2026}
 }
 ```
 
