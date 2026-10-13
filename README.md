@@ -56,7 +56,7 @@ If you find this project useful in your research, please consider citing:
 ```
 
 ## Contribution
-See the [CONTRIBUTING](CONTRIBUTING.md) file for how to help out.
+See the [CONTRIBUTING](.github/CONTRIBUTING.md) file for how to help out.
 
 ## License
 This code is CC-BY-NC4.0 licensed, as found in the [LICENSE](LICENSE.md) file.

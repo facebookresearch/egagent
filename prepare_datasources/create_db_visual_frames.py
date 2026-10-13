@@ -32,7 +32,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paths import DB_ROOT, VMME_EMBS_PATH, EGOLIFE_ROOT, VIDEO_MME_ROOT
-from retrieval_model import device, embed_frames_batch
+from retrieval_model import device, embed_frames_batch, retriever
 
 if not os.path.exists(DB_ROOT):
     os.makedirs(DB_ROOT)

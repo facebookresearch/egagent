@@ -26,6 +26,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from paths import EGOLIFE_ROOT, VIDEO_MME_ROOT
 
+SELECTED_PERSON = "A1_JAKE"  # only person with published QA as of Dec 1, 2025
+output_dir = Path(f"{EGOLIFE_ROOT}/image_1fps_{SELECTED_PERSON}")
+
 def process_video(video_path: Path, day_dir: Path) -> None:
     """Extract 1 frame per second from a single video into day_dir."""
     video_name = video_path.stem.split("_")[-1]
@@ -128,9 +131,7 @@ def main():
     args = parser.parse_args()
 
     if args.dataset == "egolife":
-        SELECTED_PERSON = "A1_JAKE"  # only person with published QA as of Dec 1, 2025
         DAYS = [f"DAY{d}" for d in range(1, 8)]  # DAY1 .. DAY7
-        output_dir = Path(f"{EGOLIFE_ROOT}/image_1fps_{SELECTED_PERSON}")
         output_dir.mkdir(exist_ok=True)
 
         with Pool(processes=min(len(DAYS), cpu_count())) as pool:
